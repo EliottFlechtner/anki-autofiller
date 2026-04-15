@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Anki Autofiller</title>
+    <style>
+      :root {
+        --bg: #f7f1e6;
+        --card: #fff8ef;
+        --text: #1f1a17;
+        --accent: #0f766e;
+        --accent-soft: #d6f0ec;
+        --line: #d9c8af;
+        --muted: #6c5d4d;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Iosevka Aile", "Source Sans 3", sans-serif;
+        background: radial-gradient(circle at 20% 0%, #fff9ef 0%, var(--bg) 60%);
+        color: var(--text);
+      }
+      .wrap {
+        max-width: 1080px;
+        margin: 2rem auto;
+        padding: 1rem;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 1rem;
+        box-shadow: 0 8px 30px rgba(31, 26, 23, 0.08);
+      }
+      h1 {
+        margin: 0 0 0.5rem;
+        font-family: "Space Grotesk", "Segoe UI", sans-serif;
+      }
+      .subhead {
+        margin: 0 0 1rem;
+        color: var(--muted);
+      }
+      .tabs {
+        display: flex;
+        gap: 0.5rem;
+        margin: 1rem 0;
+      }
+      .tab-btn {
+        border: 1px solid var(--line);
+        background: #fffdf8;
+        color: var(--text);
+        padding: 0.65rem 0.9rem;
+        border-radius: 999px;
+        cursor: pointer;
+        font-weight: 700;
+      }
+      .tab-btn.active {
+        background: var(--accent);
+        color: white;
+        border-color: var(--accent);
+      }
+      .tab-panel { display: none; }
+      .tab-panel.active { display: block; }
+      textarea, input, select {
+        width: 100%;
+        padding: 0.65rem;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fffdf8;
+      }
+      textarea { min-height: 190px; }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.9rem;
+      }
+      .full { grid-column: 1 / -1; }
+      .row { margin-top: 0.8rem; }
+      .check {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+      }
+      .check input { width: auto; }
+      .note {
+        margin-top: 0.5rem;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+      button.submit {
+        margin-top: 1rem;
+        padding: 0.8rem 1.2rem;
+        border: 0;
+        border-radius: 10px;
+        font-weight: 700;
+        background: var(--accent);
+        color: white;
+        cursor: pointer;
+      }
+      .msg { margin-top: 1rem; padding: 0.7rem; border-radius: 8px; }
+      .ok { background: #daf5ea; }
+      .err { background: #fde4dd; }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1rem;
+      }
+      th, td {
+        border: 1px solid var(--line);
+        padding: 0.45rem;
+        vertical-align: top;
+      }
+      @media (max-width: 760px) {
+        .grid { grid-template-columns: 1fr; }
+        .tabs { flex-wrap: wrap; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h1>Anki Autofiller</h1>
+        <p class="subhead">Paste words, generate cards, and optionally push them into Keio::TestApp.</p>
+
+        <form method="post" action="/generate">
+          <div class="tabs" role="tablist" aria-label="Settings tabs">
+            <button class="tab-btn active" type="button" data-tab="basic">Basic</button>
+            <button class="tab-btn" type="button" data-tab="advanced">Advanced</button>
+          </div>
+
+          <div class="tab-panel active" id="tab-basic">
+            <div class="row full">
+              <label for="words">Words (one per line)</label>
+              <textarea id="words" name="words" placeholder="食べる&#10;勉強&#10;学校"></textarea>
+            </div>
+
+            <div class="grid row">
+              <div>
+                <label for="output_path">Output TSV path</label>
+                <input id="output_path" name="output_path" value="anki_import.tsv" />
+              </div>
+              <div>
+                <label class="check" style="margin-top: 1.7rem;">
+                  <input type="checkbox" name="include_header" checked /> Include TSV header
+                </label>
+              </div>
+              <label class="check"><input type="checkbox" name="include_sentences" checked /> Include Jisho example sentences</label>
+              <label class="check"><input type="checkbox" name="separate_sentence_cards" /> Put sentences in separate cards</label>
+              <label class="check"><input type="checkbox" name="include_pitch_accent" checked /> Auto add pitch accent SVG</label>
+            </div>
+
+            <div class="note">
+              Pitch accent is generated automatically from the installed pitch database and embedded into the Reading field.
+              If "Put sentences in separate cards" is enabled, vocab cards stay short and example cards are added separately.
+            </div>
+          </div>
+
+          <div class="tab-panel" id="tab-advanced">
+            <div class="grid row">
+              <div>
+                <label for="pause_seconds">Pause seconds</label>
+                <input id="pause_seconds" name="pause_seconds" value="0.0" />
+              </div>
+              <div>
+                <label for="candidate_limit">Candidate limit</label>
+                <input id="candidate_limit" name="candidate_limit" value="3" />
+              </div>
+              <div>
+                <label for="sentence_count">Sentence count</label>
+                <input id="sentence_count" name="sentence_count" value="2" />
+              </div>
+              <div>
+                <label class="check" style="margin-top: 1.7rem;">
+                  <input type="checkbox" name="anki_connect" checked /> Enable AnkiConnect add
+                </label>
+              </div>
+            </div>
+
+            <hr />
+            <h3>Optional: Add Directly To Anki</h3>
+            <div class="grid row">
+              <div>
+                <label for="anki_url">AnkiConnect URL</label>
+                <input id="anki_url" name="anki_url" value="http://127.0.0.1:8765" />
+              </div>
+              <div>
+                <label for="deck_name">Deck name</label>
+                <input id="deck_name" name="deck_name" value="Keio::TestApp" />
+              </div>
+              <div>
+                <label for="model_name">Model name</label>
+                <input id="model_name" name="model_name" value="Japanese (Basic & Reversed)" />
+              </div>
+              <div>
+                <label for="tags">Tags (comma separated)</label>
+                <input id="tags" name="tags" placeholder="jp,vocab,autofill" />
+              </div>
+              <div>
+                <label for="field_word">Expression field</label>
+                <input id="field_word" name="field_word" value="Expression" />
+              </div>
+              <div>
+                <label for="field_meaning">Meaning field</label>
+                <input id="field_meaning" name="field_meaning" value="Meaning" />
+              </div>
+              <div>
+                <label for="field_reading">Reading field</label>
+                <input id="field_reading" name="field_reading" value="Reading" />
+              </div>
+              <label class="check"><input type="checkbox" name="allow_duplicates" /> Allow duplicates</label>
+            </div>
+
+            <hr />
+            <h3>Separate Sentence Cards</h3>
+            <div class="grid row">
+              <div>
+                <label for="sentence_deck_name">Sentence deck</label>
+                <input id="sentence_deck_name" name="sentence_deck_name" value="Keio::TestApp::Examples" />
+              </div>
+              <div>
+                <label for="sentence_model_name">Sentence model</label>
+                <input id="sentence_model_name" name="sentence_model_name" value="Basic" />
+              </div>
+              <div>
+                <label for="sentence_front_field">Sentence front field</label>
+                <input id="sentence_front_field" name="sentence_front_field" value="Front" />
+              </div>
+              <div>
+                <label for="sentence_back_field">Sentence back field</label>
+                <input id="sentence_back_field" name="sentence_back_field" value="Back" />
+              </div>
+            </div>
+          </div>
+
+          <button class="submit" type="submit">Generate Cards</button>
+        </form>
+
+        {% if error %}
+          <div class="msg err">{{ error }}</div>
+        {% endif %}
+        {% if message %}
+          <div class="msg ok">{{ message }} Saved to {{ output_path }}.</div>
+        {% endif %}
+        {% if anki_summary %}
+          <div class="msg ok">{{ anki_summary }}</div>
+        {% endif %}
+
+        {% if preview %}
+          <table>
+            <thead>
+              <tr><th>Word</th><th>Meaning</th><th>Reading</th></tr>
+            </thead>
+            <tbody>
+              {% for row in preview %}
+                <tr>
+                  <td>{{ row.word }}</td>
+                  <td>{{ row.meaning | safe }}</td>
+                  <td>{{ row.reading | safe }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% endif %}
+      </div>
+    </div>
+
+    <script>
+      const buttons = document.querySelectorAll('.tab-btn');
+      const panels = {
+        basic: document.getElementById('tab-basic'),
+        advanced: document.getElementById('tab-advanced'),
+      };
+
+      buttons.forEach((button) => {
+        button.addEventListener('click', () => {
+          buttons.forEach((other) => other.classList.remove('active'));
+          Object.values(panels).forEach((panel) => panel.classList.remove('active'));
+          button.classList.add('active');
+          panels[button.dataset.tab].classList.add('active');
+        });
+      });
+    </script>
+  </body>
+</html>
