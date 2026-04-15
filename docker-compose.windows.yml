@@ -1,0 +1,7 @@
+services:
+  jisho2anki:
+    user: root
+    environment:
+      ANKI_JISHO2ANKI_ANKI_URL: http://host.docker.internal:8765
+    volumes:
+      - ${APPDATA}/Anki2/addons21/148002038:/anki-pitch-addon:ro

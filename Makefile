@@ -16,7 +16,10 @@ help:
 	@echo "  make test          - Run local regression tests"
 	@echo "  make test-docker   - Run tests inside running Docker container"
 
-up:
+_ensure_env:
+	@test -f .env.docker || (test -f .env.docker.example && cp .env.docker.example .env.docker) || true
+
+up: _ensure_env
 	./scripts/docker-up.sh
 
 down:
@@ -63,7 +66,7 @@ backup:
 	./scripts/backup-output.sh
 
 test:
-	python3 -m unittest discover -s tests -p "test_*.py" -v
+	python -m unittest discover -s tests -p "test_*.py" -v
 
 test-docker:
 	docker exec jisho2anki python -m unittest discover -s tests -p "test_*.py" -v
