@@ -71,17 +71,29 @@ In other words, the preset is a template for the visible form, not a hidden mode
 python3 web_app.py
 ```
 
+Open: `http://127.0.0.1:5000`
+
 If you want Vite-managed frontend editing with live browser updates, the easiest path is the launcher script:
 
 ```bash
 ./.venv/bin/python scripts/dev.py
 ```
 
+Open: the Flask URL printed by the launcher output (for example `http://127.0.0.1:57581`).
+
 This starts Vite on a free local port and launches Flask with the matching dev-server URL already wired up. If you want to run the pieces manually, use `cd frontend && npm run dev` in one terminal and point `ANKI_AUTOFILLER_VITE_DEV_SERVER_URL` at the Vite port in another.
 
 The launcher also picks a free Flask port automatically, so it avoids the common "port already in use" startup failure.
 
 For the normal static build, run `cd frontend && npm run build` before starting Flask.
+
+Static pipeline summary:
+
+```bash
+cd frontend && npm run build
+cd ..
+python3 web_app.py
+```
 
 When you run `python3 web_app.py`, open `http://127.0.0.1:5000`. When you run `scripts/dev.py`, use the Flask URL printed in the launcher output.
 

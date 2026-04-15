@@ -11,6 +11,9 @@
       <script type="module" src="{{ vite_dev_server_url }}/@vite/client"></script>
       <script type="module" src="{{ vite_dev_server_url }}/src/main.jsx"></script>
     {% else %}
+      {% if static_stylesheet_filename %}
+        <link rel="stylesheet" href="{{ url_for('static', filename=static_stylesheet_filename) }}" />
+      {% endif %}
       <script type="module" src="{{ url_for('static', filename='app.js') }}"></script>
     {% endif %}
   </body>

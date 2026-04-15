@@ -59,7 +59,6 @@ function toFormData(formState) {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('basic');
   const [bootLoaded, setBootLoaded] = useState(false);
   const [presets, setPresets] = useState([]);
   const [formState, setFormState] = useState(() => buildInitialState({}));
@@ -209,18 +208,18 @@ export default function App() {
     return <div className="shell"><div className="status">Loading app...</div></div>;
   }
 
+  const showSentenceCardSettings = formState.include_sentences && formState.separate_sentence_cards;
+
   return (
     <div className="shell">
-      <div className="orb orb-a"></div>
-      <div className="orb orb-b"></div>
       <main className="panel">
-        <header>
-          <p className="eyebrow">Anki Workflow Studio</p>
-          <h1>Japanese Deck Autofiller</h1>
-          <p className="sub">React-driven interface with live progress and preset-aware field loading.</p>
+        <header className="hero">
+          <p className="eyebrow">Anki Autofiller</p>
+          <h1>Simple Japanese Card Generator</h1>
+          <p className="sub">Start with the essentials. Expand only what you need.</p>
         </header>
 
-        <section className="status-block">
+        <section className="status-block" aria-live="polite">
           <div className="status-head">{statusText}</div>
           <div className="progress-track"><div className="progress-fill" style={{width: `${progressPct}%`}} /></div>
           <div className="progress-meta">{progress.status} ({progress.completed}/{progress.total})</div>
@@ -229,66 +228,155 @@ export default function App() {
           {result.summary ? <p className="result-line">{result.summary}</p> : null}
         </section>
 
-        <div className="tabs">
-          <button type="button" className={activeTab === 'basic' ? 'active' : ''} onClick={() => setActiveTab('basic')}>Basic</button>
-          <button type="button" className={activeTab === 'advanced' ? 'active' : ''} onClick={() => setActiveTab('advanced')}>Advanced</button>
-        </div>
-
-        <form onSubmit={startGeneration} className="form-grid">
-          {activeTab === 'basic' ? (
-            <>
-              <label className="full">Words (one per line)
-                <textarea value={formState.words} onChange={(e) => updateField('words', e.target.value)} placeholder={'食べる\n勉強\n試合'} />
-              </label>
-
-              <label>Output TSV path
-                <input value={formState.output_path} onChange={(e) => updateField('output_path', e.target.value)} />
-              </label>
-
-              <label className="toggle"><input type="checkbox" checked={formState.include_header} onChange={(e) => updateField('include_header', e.target.checked)} />Include TSV header</label>
-              <label className="toggle"><input type="checkbox" checked={formState.include_sentences} onChange={(e) => updateField('include_sentences', e.target.checked)} />Include example sentences</label>
-              <label className="toggle"><input type="checkbox" checked={formState.separate_sentence_cards} onChange={(e) => updateField('separate_sentence_cards', e.target.checked)} />Separate sentence cards</label>
-              <label className="toggle"><input type="checkbox" checked={formState.include_pitch_accent} onChange={(e) => updateField('include_pitch_accent', e.target.checked)} />Auto pitch accent SVG</label>
-            </>
-          ) : (
-            <>
+        <form onSubmit={startGeneration} className="stack">
+          <section className="card">
+            <h2>Setup</h2>
+            <p className="hint">Use preset values as a starting point, then edit visible fields.</p>
+            <div className="grid two">
               <label>Preset
                 <select value={formState.preset} onChange={(e) => updateField('preset', e.target.value)}>
                   <option value="">(none)</option>
                   {presets.map((preset) => <option key={preset} value={preset}>{preset}</option>)}
                 </select>
               </label>
-
-              <label>Env file path
+              <label>Env file path (optional)
                 <input value={formState.env_file} onChange={(e) => updateField('env_file', e.target.value)} placeholder="configs/my-import.env" />
               </label>
+            </div>
+            <button type="button" className="ghost" onClick={applyPreset} disabled={loadingPreset}>
+              {loadingPreset ? 'Applying Preset...' : 'Apply Preset To Form'}
+            </button>
+          </section>
 
-              <button type="button" className="ghost" onClick={applyPreset} disabled={loadingPreset}>{loadingPreset ? 'Applying...' : 'Load Preset Defaults'}</button>
+          <section className="card">
+            <h2>Input & Output</h2>
+            <div className="grid two">
+              <label className="full">Words (one per line)
+                <textarea value={formState.words} onChange={(e) => updateField('words', e.target.value)} placeholder={'食べる\n勉強\n試合'} />
+              </label>
 
-              <label>Pause seconds<input value={formState.pause_seconds} onChange={(e) => updateField('pause_seconds', e.target.value)} /></label>
-              <label>Candidate limit<input value={formState.candidate_limit} onChange={(e) => updateField('candidate_limit', e.target.value)} /></label>
-              <label>Sentence count<input value={formState.sentence_count} onChange={(e) => updateField('sentence_count', e.target.value)} /></label>
-              <label>Max workers<input value={formState.max_workers} onChange={(e) => updateField('max_workers', e.target.value)} /></label>
+              <label className="full">Output TSV path
+                <input value={formState.output_path} onChange={(e) => updateField('output_path', e.target.value)} />
+              </label>
+            </div>
+            <label className="toggle">
+              <input type="checkbox" checked={formState.include_header} onChange={(e) => updateField('include_header', e.target.checked)} />
+              Include header row in TSV
+            </label>
+          </section>
 
-              <label>Anki URL<input value={formState.anki_url} onChange={(e) => updateField('anki_url', e.target.value)} /></label>
-              <label>Deck name<input value={formState.deck_name} onChange={(e) => updateField('deck_name', e.target.value)} /></label>
-              <label>Model name<input value={formState.model_name} onChange={(e) => updateField('model_name', e.target.value)} /></label>
-              <label>Tags<input value={formState.tags} onChange={(e) => updateField('tags', e.target.value)} /></label>
-              <label>Word field<input value={formState.field_word} onChange={(e) => updateField('field_word', e.target.value)} /></label>
-              <label>Meaning field<input value={formState.field_meaning} onChange={(e) => updateField('field_meaning', e.target.value)} /></label>
-              <label>Reading field<input value={formState.field_reading} onChange={(e) => updateField('field_reading', e.target.value)} /></label>
+          <section className="card">
+            <h2>Content Options</h2>
+            <div className="toggle-list">
+              <label className="toggle">
+                <input type="checkbox" checked={formState.include_sentences} onChange={(e) => updateField('include_sentences', e.target.checked)} />
+                Include example sentences
+              </label>
+              <label className="toggle">
+                <input type="checkbox" checked={formState.include_pitch_accent} onChange={(e) => updateField('include_pitch_accent', e.target.checked)} />
+                Include pitch accent SVG
+              </label>
+            </div>
 
-              <label>Sentence deck<input value={formState.sentence_deck_name} onChange={(e) => updateField('sentence_deck_name', e.target.value)} /></label>
-              <label>Sentence model<input value={formState.sentence_model_name} onChange={(e) => updateField('sentence_model_name', e.target.value)} /></label>
-              <label>Sentence front field<input value={formState.sentence_front_field} onChange={(e) => updateField('sentence_front_field', e.target.value)} /></label>
-              <label>Sentence back field<input value={formState.sentence_back_field} onChange={(e) => updateField('sentence_back_field', e.target.value)} /></label>
+            {formState.include_sentences ? (
+              <div className="inline-options">
+                <label>Sentence count per word
+                  <input type="number" min="0" step="1" value={formState.sentence_count} onChange={(e) => updateField('sentence_count', e.target.value)} />
+                </label>
+                <label className="toggle">
+                  <input type="checkbox" checked={formState.separate_sentence_cards} onChange={(e) => updateField('separate_sentence_cards', e.target.checked)} />
+                  Create separate sentence cards
+                </label>
+              </div>
+            ) : null}
+          </section>
 
-              <label className="toggle"><input type="checkbox" checked={formState.anki_connect} onChange={(e) => updateField('anki_connect', e.target.checked)} />Enable AnkiConnect add</label>
-              <label className="toggle"><input type="checkbox" checked={formState.allow_duplicates} onChange={(e) => updateField('allow_duplicates', e.target.checked)} />Allow duplicates</label>
-            </>
-          )}
+          <section className="card">
+            <h2>Destination</h2>
+            <label className="toggle">
+              <input type="checkbox" checked={formState.anki_connect} onChange={(e) => updateField('anki_connect', e.target.checked)} />
+              Send notes directly to AnkiConnect
+            </label>
 
-          <button className="submit" type="submit" disabled={Boolean(jobId)}>Generate Cards</button>
+            {formState.anki_connect ? (
+              <>
+                <div className="grid two">
+                  <label>AnkiConnect URL
+                    <input value={formState.anki_url} onChange={(e) => updateField('anki_url', e.target.value)} />
+                  </label>
+                  <label>Deck name
+                    <input value={formState.deck_name} onChange={(e) => updateField('deck_name', e.target.value)} />
+                  </label>
+                  <label>Model name
+                    <input value={formState.model_name} onChange={(e) => updateField('model_name', e.target.value)} />
+                  </label>
+                  <label>Tags (comma-separated)
+                    <input value={formState.tags} onChange={(e) => updateField('tags', e.target.value)} />
+                  </label>
+                </div>
+                <label className="toggle">
+                  <input type="checkbox" checked={formState.allow_duplicates} onChange={(e) => updateField('allow_duplicates', e.target.checked)} />
+                  Allow duplicates in Anki
+                </label>
+
+                <details className="advanced-block">
+                  <summary>Edit note field mapping</summary>
+                  <div className="grid two">
+                    <label>Word field
+                      <input value={formState.field_word} onChange={(e) => updateField('field_word', e.target.value)} />
+                    </label>
+                    <label>Meaning field
+                      <input value={formState.field_meaning} onChange={(e) => updateField('field_meaning', e.target.value)} />
+                    </label>
+                    <label>Reading field
+                      <input value={formState.field_reading} onChange={(e) => updateField('field_reading', e.target.value)} />
+                    </label>
+                  </div>
+                </details>
+
+                {showSentenceCardSettings ? (
+                  <details className="advanced-block" open>
+                    <summary>Sentence card note mapping</summary>
+                    <div className="grid two">
+                      <label>Sentence deck
+                        <input value={formState.sentence_deck_name} onChange={(e) => updateField('sentence_deck_name', e.target.value)} />
+                      </label>
+                      <label>Sentence model
+                        <input value={formState.sentence_model_name} onChange={(e) => updateField('sentence_model_name', e.target.value)} />
+                      </label>
+                      <label>Sentence front field
+                        <input value={formState.sentence_front_field} onChange={(e) => updateField('sentence_front_field', e.target.value)} />
+                      </label>
+                      <label>Sentence back field
+                        <input value={formState.sentence_back_field} onChange={(e) => updateField('sentence_back_field', e.target.value)} />
+                      </label>
+                    </div>
+                  </details>
+                ) : null}
+              </>
+            ) : (
+              <p className="hint">Cards will only be written to the TSV file.</p>
+            )}
+          </section>
+
+          <details className="card advanced-block">
+            <summary>Performance tuning</summary>
+            <div className="grid three">
+              <label>Pause seconds
+                <input type="number" min="0" step="0.1" value={formState.pause_seconds} onChange={(e) => updateField('pause_seconds', e.target.value)} />
+              </label>
+              <label>Candidate limit
+                <input type="number" min="1" step="1" value={formState.candidate_limit} onChange={(e) => updateField('candidate_limit', e.target.value)} />
+              </label>
+              <label>Max workers
+                <input type="number" min="1" step="1" value={formState.max_workers} onChange={(e) => updateField('max_workers', e.target.value)} />
+              </label>
+            </div>
+          </details>
+
+          <button className="submit" type="submit" disabled={Boolean(jobId)}>
+            {jobId ? 'Generating...' : 'Generate Cards'}
+          </button>
         </form>
       </main>
     </div>

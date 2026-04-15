@@ -28,6 +28,18 @@ JOBS: dict[str, dict[str, Any]] = {}
 JOB_LOCK = threading.Lock()
 
 
+def _static_stylesheet_filename() -> str:
+    """Return the built frontend stylesheet path relative to Flask static root."""
+    assets_dir = ROOT_DIR / "autofiller" / "static" / "assets"
+    if not assets_dir.exists():
+        return ""
+
+    matches = sorted(assets_dir.glob("main-*.css"))
+    if not matches:
+        return ""
+    return f"assets/{matches[-1].name}"
+
+
 def _bool_from_form(value: str | None, default: bool = False) -> bool:
     if value is None:
         return default
@@ -302,9 +314,13 @@ def _run_job(job_id: str, form_data: dict[str, str]) -> None:
 
 @app.get("/")
 def index() -> str:
+    vite_dev_server_url = os.environ.get("ANKI_AUTOFILLER_VITE_DEV_SERVER_URL", "")
     return render_template(
         "spa.html",
-        vite_dev_server_url=os.environ.get("ANKI_AUTOFILLER_VITE_DEV_SERVER_URL", ""),
+        vite_dev_server_url=vite_dev_server_url,
+        static_stylesheet_filename=(
+            "" if vite_dev_server_url else _static_stylesheet_filename()
+        ),
     )
 
 
