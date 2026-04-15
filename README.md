@@ -2,6 +2,7 @@
 
 [![Compose Smoke](https://github.com/EliottFlechtner/Jisho2Anki/actions/workflows/compose-smoke.yml/badge.svg)](https://github.com/EliottFlechtner/Jisho2Anki/actions/workflows/compose-smoke.yml)
 [![Docker Release](https://github.com/EliottFlechtner/Jisho2Anki/actions/workflows/docker-release.yml/badge.svg)](https://github.com/EliottFlechtner/Jisho2Anki/actions/workflows/docker-release.yml)
+[![Unit Tests](https://github.com/EliottFlechtner/Jisho2Anki/actions/workflows/tests.yml/badge.svg)](https://github.com/EliottFlechtner/Jisho2Anki/actions/workflows/tests.yml)
 [![Latest Release](https://img.shields.io/github/v/release/EliottFlechtner/Jisho2Anki?display_name=tag)](https://github.com/EliottFlechtner/Jisho2Anki/releases)
 [![GHCR Image](https://img.shields.io/badge/GHCR-ghcr.io%2Feliottflechtner%2Fjisho2anki-2ea44f)](https://ghcr.io/eliottflechtner/jisho2anki)
 
