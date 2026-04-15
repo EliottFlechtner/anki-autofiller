@@ -118,7 +118,9 @@ def _build_from_form(
     write_tsv(rows=rows, output_path=output_path, include_header=include_header)
 
     anki_summary = ""
-    if _bool_from_form(form_data.get("anki_connect"), default=bool(settings["anki_connect"])):
+    if _bool_from_form(
+        form_data.get("anki_connect"), default=bool(settings["anki_connect"])
+    ):
         anki_url = _value_from_form(form_data, "anki_url", str(settings["anki_url"]))
         deck_name = _value_from_form(form_data, "deck_name", str(settings["deck_name"]))
         model_name = _value_from_form(
