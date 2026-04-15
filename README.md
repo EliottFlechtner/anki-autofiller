@@ -62,24 +62,23 @@ python3 anki_autofiller.py --env-file configs/my-run.env --anki-connect
 
 The web app uses the same settings loader. In the browser, clicking `Load preset defaults` or changing the preset/env file repopulates the visible fields with the merged settings. The values currently shown in the form are the values that get submitted. If you edit a field after loading a preset, that manual edit wins for that submission.
 
+In other words, the preset is a template for the visible form, not a hidden mode. The fields stay editable, and the final submission always uses whatever is visible when you click `Generate Cards`.
+
 ## Quick Start (Web UI)
 
 ```bash
 python3 web_app.py
 ```
 
-If you want Vite-managed frontend editing with live browser updates, run the frontend dev server in a second terminal:
+If you want Vite-managed frontend editing with live browser updates, the easiest path is the launcher script:
 
 ```bash
-cd frontend
-npm run dev
+./.venv/bin/python scripts/dev.py
 ```
 
-Then start Flask with:
+This starts Vite on a free local port and launches Flask with the matching dev-server URL already wired up. If you want to run the pieces manually, use `cd frontend && npm run dev` in one terminal and point `ANKI_AUTOFILLER_VITE_DEV_SERVER_URL` at the Vite port in another.
 
-```bash
-ANKI_AUTOFILLER_VITE_DEV_SERVER_URL=http://127.0.0.1:5173 python3 web_app.py
-```
+The launcher also picks a free Flask port automatically, so it avoids the common "port already in use" startup failure.
 
 For the normal static build, run `cd frontend && npm run build` before starting Flask.
 

@@ -20,6 +20,9 @@ from .pipeline import build_rows
 ROOT_DIR = Path(__file__).resolve().parents[1]
 app = Flask(__name__, template_folder=str(ROOT_DIR / "templates"))
 PROGRESS_RE = re.compile(r"^\[(\d+)/(\d+)\]")
+DEFAULT_FLASK_PORT = int(
+    os.environ.get("ANKI_AUTOFILLER_FLASK_PORT", os.environ.get("PORT", 5000))
+)
 
 JOBS: dict[str, dict[str, Any]] = {}
 JOB_LOCK = threading.Lock()
@@ -353,4 +356,4 @@ def generate() -> str:
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    app.run(host="127.0.0.1", port=DEFAULT_FLASK_PORT, debug=False)

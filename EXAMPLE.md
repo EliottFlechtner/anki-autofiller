@@ -28,15 +28,12 @@ npm install
 ```
 
 ```bash
-cd frontend
-npm run dev
+./.venv/bin/python scripts/dev.py
 ```
 
-Then launch Flask with:
+The launcher automatically picks free ports for both the Vite dev server and Flask.
 
-```bash
-ANKI_AUTOFILLER_VITE_DEV_SERVER_URL=http://127.0.0.1:5173 ./.venv/bin/python web_app.py
-```
+If you want the lower-level manual flow instead, run `cd frontend && npm install && npm run dev` in one terminal and start Flask in another with `ANKI_AUTOFILLER_VITE_DEV_SERVER_URL=http://127.0.0.1:<vite-port> ./.venv/bin/python web_app.py`.
 
 2. Open `http://127.0.0.1:5000`.
 
@@ -67,6 +64,7 @@ Preset behavior:
 - The selected preset or env file populates the form when you click `Load preset defaults`.
 - The values visible in the form are the values that get submitted.
 - If you change a field after loading a preset, your manual edit overrides that field for the current run.
+- Presets are templates, not hidden modes. They do not disable the other fields; they just fill them with defaults.
 
 ## Option B: CLI (Fast + Scriptable)
 
