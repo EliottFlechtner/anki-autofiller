@@ -26,6 +26,9 @@ def run_up():
     """Run 'docker compose up' with appropriate platform settings."""
     compose_args = get_compose_args()
     
+    # Debug: Show what command we're running
+    print(f"[DEBUG] Compose args: {' '.join(compose_args)}")
+    
     # Try to pull prebuilt image
     print("Attempting to pull prebuilt image...")
     pull_cmd = compose_args + ["pull", "--ignore-pull-failures"]
@@ -46,12 +49,17 @@ def run_up():
     build_result = subprocess.run(build_cmd)
     
     if build_result.returncode != 0:
-        print("\nBuild failed. This is usually a host Docker DNS/connectivity problem.")
-        print("Try:")
+        print("\n[ERROR] Build failed!")
+        print("Possible causes:")
+        print("  1) Host Docker DNS/connectivity problem")
+        print("  2) PyPI or package repository is unreachable")
+        print("  3) Docker daemon is not running or out of disk space")
+        print("\nTroubleshooting steps:")
         print("  1) docker run --rm busybox nslookup pypi.org")
         print("  2) Restart Docker daemon")
-        print("  3) If behind proxy, set HTTP_PROXY/HTTPS_PROXY/NO_PROXY and retry")
-        print("  4) Optionally set PIP_INDEX_URL in .env.docker")
+        print("  3) Check available disk: df -h")
+        print("  4) If behind proxy, set HTTP_PROXY/HTTPS_PROXY/NO_PROXY and retry")
+        print("  5) Optionally set PIP_INDEX_URL in .env.docker")
         return 1
     
     # Start after building

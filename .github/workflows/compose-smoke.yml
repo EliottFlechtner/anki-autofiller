@@ -13,18 +13,38 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify Docker and compose setup
+        run: |
+          echo "=== Docker Version ===" && docker --version
+          echo "" && echo "=== Docker Compose Version ===" && docker compose version
+          echo "" && echo "=== Working Directory ===" && pwd
+          echo "" && echo "=== Compose Files ===" && ls -la config/docker-compose*.yml
+          echo "" && echo "=== Env Example ===" && cat config/.env.docker.example | head -5
+
       - name: Prepare env
         run: cp config/.env.docker.example .env.docker
 
       - name: Bring stack up
-        run: make up
+        run: |
+          echo "Running make up..."
+          make up
+          echo "Make up completed with exit code: $?"
+
+      - name: Wait for container to be running
+        run: |
+          echo "Waiting for container to start..."
+          sleep 5
+          echo "Checking container status..."
+          docker compose -f config/docker-compose.yml --env-file .env.docker ps
 
       - name: Wait for health
         run: |
           for i in {1..30}; do
             if curl -fsS http://127.0.0.1:5000/healthz >/dev/null; then
+              echo "Health check passed on attempt $i"
               exit 0
             fi
+            echo "Attempt $i/30 - waiting for service..."
             sleep 2
           done
           echo "Health endpoint did not become ready in time"
@@ -36,8 +56,9 @@ jobs:
       - name: Show status and logs on failure
         if: failure()
         run: |
-          make ps || true
-          docker compose --env-file .env.docker logs --tail=200 || true
+          echo "=== Container Status ===" && make ps || true
+          echo "" && echo "=== Application Logs ===" && docker compose -f config/docker-compose.yml --env-file .env.docker logs --tail=200 || true
+          echo "" && echo "=== Docker Images ===" && docker images || true
 
       - name: Tear down
         if: always()
