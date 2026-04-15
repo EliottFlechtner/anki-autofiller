@@ -1,0 +1,13 @@
+{
+  "name": "anki-autofiller-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:watch": "vite build --watch"
+  },
+  "devDependencies": {
+    "vite": "^6.0.11"
+  }
+}

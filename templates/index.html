@@ -152,7 +152,7 @@
         <h1>Anki Autofiller</h1>
         <p class="subhead">Paste words, generate cards, and optionally push them into Anki.</p>
 
-        <form method="post" action="/generate">
+        <form method="post" action="/generate" data-app="anki-autofiller">
           <div class="tabs" role="tablist" aria-label="Settings tabs">
             <button class="tab-btn active" type="button" data-tab="basic">Basic</button>
             <button class="tab-btn" type="button" data-tab="advanced">Advanced</button>
@@ -203,6 +203,12 @@
               <div>
                 <label for="env_file">Env file path (optional)</label>
                 <input id="env_file" name="env_file" placeholder="configs/my-import.env" value="{{ defaults.selected_env_file }}" />
+              </div>
+              <div class="full note" id="preset-status" aria-live="polite">
+                Select a preset or env file, then load it to populate the form with the exact values that will be submitted.
+              </div>
+              <div>
+                <button class="submit" type="button" id="load-preset">Load preset defaults</button>
               </div>
               <div>
                 <label for="pause_seconds">Pause seconds</label>
@@ -320,77 +326,11 @@
         {% endif %}
       </div>
     </div>
-
-    <script>
-      const form = document.querySelector('form[action="/generate"]');
-      const progressWrap = document.getElementById('progress-wrap');
-      const progressText = document.getElementById('progress-text');
-      const progressFill = document.getElementById('progress-fill');
-      const progressLog = document.getElementById('progress-log');
-      const buttons = document.querySelectorAll('.tab-btn');
-      const panels = {
-        basic: document.getElementById('tab-basic'),
-        advanced: document.getElementById('tab-advanced'),
-      };
-
-      buttons.forEach((button) => {
-        button.addEventListener('click', () => {
-          buttons.forEach((other) => other.classList.remove('active'));
-          Object.values(panels).forEach((panel) => panel.classList.remove('active'));
-          button.classList.add('active');
-          panels[button.dataset.tab].classList.add('active');
-        });
-      });
-
-      form.addEventListener('submit', async (event) => {
-        event.preventDefault();
-
-        progressText.textContent = 'Starting job...';
-        progressFill.style.width = '0%';
-        progressLog.textContent = '';
-
-        const formData = new FormData(form);
-        let jobId = null;
-        try {
-          const startResp = await fetch('/api/start', {
-            method: 'POST',
-            body: formData,
-          });
-          const startData = await startResp.json();
-          jobId = startData.job_id;
-        } catch (error) {
-          progressText.textContent = `Failed to start: ${error}`;
-          return;
-        }
-
-        const poll = setInterval(async () => {
-          try {
-            const resp = await fetch(`/api/status/${jobId}`);
-            const data = await resp.json();
-
-            const total = Math.max(0, data.total || 0);
-            const completed = Math.max(0, data.completed || 0);
-            const pct = total > 0 ? Math.floor((completed / total) * 100) : 0;
-
-            progressText.textContent = `Status: ${data.status} (${completed}/${total})`;
-            progressFill.style.width = `${Math.min(100, pct)}%`;
-            progressLog.textContent = (data.log || []).join('\n');
-            progressLog.scrollTop = progressLog.scrollHeight;
-
-            if (data.status === 'done') {
-              clearInterval(poll);
-              progressText.textContent = `${data.message} ${data.anki_summary || ''}`.trim();
-              progressFill.style.width = '100%';
-            } else if (data.status === 'error') {
-              clearInterval(poll);
-              progressText.textContent = `Error: ${data.error || 'unknown error'}`;
-            }
-          } catch (error) {
-            clearInterval(poll);
-            progressText.textContent = `Polling error: ${error}`;
-          }
-        }, 700);
-      });
-    </script>
+    {% if vite_dev_server_url %}
+      <script type="module" src="{{ vite_dev_server_url }}/@vite/client"></script>
+      <script type="module" src="{{ vite_dev_server_url }}/src/main.js"></script>
+    {% else %}
+      <script type="module" src="{{ url_for('static', filename='app.js') }}"></script>
+    {% endif %}
   </body>
 </html>

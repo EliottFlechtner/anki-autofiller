@@ -20,6 +20,24 @@ This guide shows how to add a new list of words to a new Anki deck called `Examp
 ./.venv/bin/python web_app.py
 ```
 
+Optional, if you want live frontend editing while you work on the page:
+
+```bash
+cd frontend
+npm install
+```
+
+```bash
+cd frontend
+npm run dev
+```
+
+Then launch Flask with:
+
+```bash
+ANKI_AUTOFILLER_VITE_DEV_SERVER_URL=http://127.0.0.1:5173 ./.venv/bin/python web_app.py
+```
+
 2. Open `http://127.0.0.1:5000`.
 
 3. In `Basic` tab:
@@ -29,6 +47,7 @@ This guide shows how to add a new list of words to a new Anki deck called `Examp
 
 4. In `Advanced` tab:
 - Optional: set `Preset` or `Env file path` if you keep extra profiles in files.
+- Click `Load preset defaults` after choosing a preset or env file so the visible fields match what will be submitted.
 - Set `Deck name` to `Example`.
 - Keep model as `Japanese (Basic & Reversed)` unless you want another note type.
 - For faster generation, set `Max workers` to `6` to `10`.
@@ -42,6 +61,12 @@ You will see a live progress area with:
 - rolling logs
 
 Note: the app auto-creates missing decks, so `Example` will be created automatically.
+
+Preset behavior:
+
+- The selected preset or env file populates the form when you click `Load preset defaults`.
+- The values visible in the form are the values that get submitted.
+- If you change a field after loading a preset, your manual edit overrides that field for the current run.
 
 ## Option B: CLI (Fast + Scriptable)
 

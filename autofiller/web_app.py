@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import threading
 import uuid
@@ -60,16 +61,22 @@ def _template_defaults(
     return defaults
 
 
+def _resolved_settings_for_request(form_data: Mapping[str, str]) -> dict[str, Any]:
+    preset_name = _value_from_form(form_data, "preset", "")
+    env_file = _value_from_form(form_data, "env_file", "")
+    return load_settings(
+        preset_name=preset_name or None,
+        env_file=env_file or None,
+    )
+
+
 def _build_from_form(
     form_data: Mapping[str, str],
     progress_printer,
 ) -> dict[str, Any]:
     preset_name = _value_from_form(form_data, "preset", "")
     env_file = _value_from_form(form_data, "env_file", "")
-    settings = load_settings(
-        preset_name=preset_name or None,
-        env_file=env_file or None,
-    )
+    settings = _resolved_settings_for_request(form_data)
 
     words_block = form_data.get("words", "")
     words = normalize_words(words_block.splitlines())
@@ -217,6 +224,22 @@ def _build_from_form(
     }
 
 
+@app.post("/api/settings-preview")
+def api_settings_preview() -> Any:
+    form_data = request.form.to_dict(flat=True)
+    preset_name = _value_from_form(form_data, "preset", "")
+    env_file = _value_from_form(form_data, "env_file", "")
+    settings = _resolved_settings_for_request(form_data)
+    return jsonify(
+        {
+            "preset": preset_name,
+            "env_file": env_file,
+            "settings": settings,
+            "presets": available_presets(),
+        }
+    )
+
+
 def _run_job(job_id: str, form_data: dict[str, str]) -> None:
     with JOB_LOCK:
         JOBS[job_id] = {
@@ -274,6 +297,7 @@ def index() -> str:
         "index.html",
         defaults=_template_defaults(),
         presets=available_presets(),
+        vite_dev_server_url=os.environ.get("ANKI_AUTOFILLER_VITE_DEV_SERVER_URL", ""),
     )
 
 
@@ -308,6 +332,9 @@ def generate() -> str:
                 selected_env_file=request.form.get("env_file", ""),
             ),
             presets=available_presets(),
+            vite_dev_server_url=os.environ.get(
+                "ANKI_AUTOFILLER_VITE_DEV_SERVER_URL", ""
+            ),
         )
 
     return render_template(
@@ -321,6 +348,7 @@ def generate() -> str:
             selected_env_file=result.get("env_file", ""),
         ),
         presets=available_presets(),
+        vite_dev_server_url=os.environ.get("ANKI_AUTOFILLER_VITE_DEV_SERVER_URL", ""),
     )
 
 

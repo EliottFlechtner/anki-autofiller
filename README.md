@@ -27,6 +27,13 @@ It can also:
 python3 -m pip install -r requirements.txt
 ```
 
+For the web frontend bundle, also install the Node dependencies once:
+
+```bash
+cd frontend
+npm install
+```
+
 ## Config Files And Presets
 
 This project supports env-style config files with `ANKI_AUTOFILLER_*` keys.
@@ -53,11 +60,28 @@ Example:
 python3 anki_autofiller.py --env-file configs/my-run.env --anki-connect
 ```
 
+The web app uses the same settings loader. In the browser, clicking `Load preset defaults` or changing the preset/env file repopulates the visible fields with the merged settings. The values currently shown in the form are the values that get submitted. If you edit a field after loading a preset, that manual edit wins for that submission.
+
 ## Quick Start (Web UI)
 
 ```bash
 python3 web_app.py
 ```
+
+If you want Vite-managed frontend editing with live browser updates, run the frontend dev server in a second terminal:
+
+```bash
+cd frontend
+npm run dev
+```
+
+Then start Flask with:
+
+```bash
+ANKI_AUTOFILLER_VITE_DEV_SERVER_URL=http://127.0.0.1:5173 python3 web_app.py
+```
+
+For the normal static build, run `cd frontend && npm run build` before starting Flask.
 
 Open `http://127.0.0.1:5000`, paste words line-by-line, and click `Generate Cards`.
 
@@ -68,7 +92,7 @@ The web page can:
 - use the existing Japanese note type by default
 - keep pitch accent generation on by default
 - show live generation progress (status, completed count, logs)
-- speed up non-interactive generation with configurable worker count
+- load preset defaults into the visible form with a single click
 
 ## Quick Start (CLI)
 
