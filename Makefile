@@ -1,4 +1,4 @@
-.PHONY: help up down logs ps config dev-up release-check smoke backup
+.PHONY: help up down logs ps config dev-up release-check smoke backup test test-docker
 
 help:
 	@echo "Targets:"
@@ -11,6 +11,8 @@ help:
 	@echo "  make release-check - Validate release prerequisites"
 	@echo "  make smoke         - Start stack and validate core endpoints"
 	@echo "  make backup        - Create timestamped backup of output TSV"
+	@echo "  make test          - Run local regression tests"
+	@echo "  make test-docker   - Run tests inside running Docker container"
 
 up:
 	./scripts/docker-up.sh
@@ -51,3 +53,9 @@ smoke: up
 
 backup:
 	./scripts/backup-output.sh
+
+test:
+	python3 -m unittest discover -s tests -p "test_*.py" -v
+
+test-docker:
+	docker exec jisho2anki python -m unittest discover -s tests -p "test_*.py" -v

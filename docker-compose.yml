@@ -1,5 +1,7 @@
 services:
   jisho2anki:
+    user: "${UID:-1000}:${GID:-1000}"
+    network_mode: "host"
     build:
       context: .
       dockerfile: Dockerfile
@@ -11,21 +13,18 @@ services:
     image: ghcr.io/eliottflechtner/jisho2anki:${ANKI_JISHO2ANKI_IMAGE_TAG:-latest}
     container_name: jisho2anki
     restart: unless-stopped
-    ports:
-      - "${APP_PORT:-5000}:5000"
     environment:
-      ANKI_JISHO2ANKI_FLASK_HOST: 0.0.0.0
-      ANKI_JISHO2ANKI_FLASK_PORT: 5000
+      ANKI_JISHO2ANKI_FLASK_HOST: 127.0.0.1
+      ANKI_JISHO2ANKI_FLASK_PORT: ${APP_PORT:-5000}
       ANKI_JISHO2ANKI_OUTPUT_PATH: ${ANKI_JISHO2ANKI_OUTPUT_PATH:-/app/output/anki_import.tsv}
-      ANKI_JISHO2ANKI_ANKI_URL: ${ANKI_JISHO2ANKI_ANKI_URL:-http://host.docker.internal:8765}
+      ANKI_JISHO2ANKI_ANKI_URL: ${ANKI_JISHO2ANKI_ANKI_URL:-http://127.0.0.1:8765}
       ANKI_JISHO2ANKI_PRESET: ${ANKI_JISHO2ANKI_PRESET:-}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      ANKI_PITCH_ADDON_DIR: /anki-pitch-addon
     volumes:
-      - ./output:/app/output
-      - ./presets:/app/presets:ro
+      - ./:/app
+      - ${HOME}/.local/share/Anki2/addons21/148002038:/anki-pitch-addon:ro
     healthcheck:
-      test: ["CMD", "python", "-c", "import sys, urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/healthz', timeout=3); sys.exit(0)"]
+      test: ["CMD", "python", "-c", "import os, sys, urllib.request; port=os.environ.get('ANKI_JISHO2ANKI_FLASK_PORT','5000'); urllib.request.urlopen(f'http://127.0.0.1:{port}/healthz', timeout=3); sys.exit(0)"]
       interval: 30s
       timeout: 5s
       retries: 3

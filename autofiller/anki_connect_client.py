@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import urllib.error
 import urllib.request
 
 from .models import CardRow, SentenceCardRow
@@ -17,8 +18,21 @@ def invoke(url: str, action: str, params: dict) -> object:
         method="POST",
     )
 
-    with urllib.request.urlopen(req, timeout=10) as response:
-        body = response.read().decode("utf-8")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            body = response.read().decode("utf-8")
+    except urllib.error.URLError as exc:
+        reason = str(exc.reason) if getattr(exc, "reason", None) else str(exc)
+        docker_hint = ""
+        if "host.docker.internal" in url and "Errno 111" in reason:
+            docker_hint = (
+                " If you are running in Docker on Linux, this usually means AnkiConnect "
+                "is listening only on 127.0.0.1. Either run the app outside Docker, or "
+                "configure AnkiConnect to bind to 0.0.0.0 so containers can reach it."
+            )
+        raise RuntimeError(
+            f"Could not reach AnkiConnect at {url}: {reason}.{docker_hint}"
+        ) from exc
 
     data = json.loads(body)
     if data.get("error"):

@@ -49,10 +49,9 @@ function toFormData(formState) {
     data.append(key, formState[key] ?? '');
   }
 
+  // Send explicit boolean values so unchecked toggles override preset defaults.
   for (const key of CHECK_FIELDS) {
-    if (formState[key]) {
-      data.append(key, 'on');
-    }
+    data.append(key, formState[key] ? 'true' : 'false');
   }
 
   return data;

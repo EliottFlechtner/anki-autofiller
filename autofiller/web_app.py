@@ -51,7 +51,12 @@ def _static_stylesheet_filename() -> str:
 def _bool_from_form(value: str | None, default: bool = False) -> bool:
     if value is None:
         return default
-    return value == "on"
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
 
 
 def _job_update(job_id: str, **updates: Any) -> None:
