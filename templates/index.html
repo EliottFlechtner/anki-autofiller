@@ -101,6 +101,36 @@
       .msg { margin-top: 1rem; padding: 0.7rem; border-radius: 8px; }
       .ok { background: #daf5ea; }
       .err { background: #fde4dd; }
+      .progress-wrap {
+        margin-top: 1rem;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0.8rem;
+        background: #fffdf8;
+      }
+      .progress-wrap.hidden { display: none; }
+      .progress-bar {
+        margin-top: 0.5rem;
+        height: 12px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: #eadfce;
+      }
+      .progress-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #0f766e, #0a9a8f);
+        transition: width 180ms ease;
+      }
+      .progress-log {
+        margin-top: 0.7rem;
+        max-height: 180px;
+        overflow: auto;
+        white-space: pre-wrap;
+        font-family: "Iosevka Aile", monospace;
+        font-size: 0.9rem;
+        color: #25403c;
+      }
       table {
         width: 100%;
         border-collapse: collapse;
@@ -138,16 +168,16 @@
             <div class="grid row">
               <div>
                 <label for="output_path">Output TSV path</label>
-                <input id="output_path" name="output_path" value="anki_import.tsv" />
+                <input id="output_path" name="output_path" value="{{ defaults.output_path }}" />
               </div>
               <div>
                 <label class="check" style="margin-top: 1.7rem;">
-                  <input type="checkbox" name="include_header" checked /> Include TSV header
+                  <input type="checkbox" name="include_header" {% if defaults.include_header %}checked{% endif %} /> Include TSV header
                 </label>
               </div>
-              <label class="check"><input type="checkbox" name="include_sentences" checked /> Include Jisho example sentences</label>
-              <label class="check"><input type="checkbox" name="separate_sentence_cards" /> Put sentences in separate cards</label>
-              <label class="check"><input type="checkbox" name="include_pitch_accent" checked /> Auto add pitch accent SVG</label>
+              <label class="check"><input type="checkbox" name="include_sentences" {% if defaults.include_sentences %}checked{% endif %} /> Include Jisho example sentences</label>
+              <label class="check"><input type="checkbox" name="separate_sentence_cards" {% if defaults.separate_sentence_cards %}checked{% endif %} /> Put sentences in separate cards</label>
+              <label class="check"><input type="checkbox" name="include_pitch_accent" {% if defaults.include_pitch_accent %}checked{% endif %} /> Auto add pitch accent SVG</label>
             </div>
 
             <div class="note">
@@ -159,20 +189,37 @@
           <div class="tab-panel" id="tab-advanced">
             <div class="grid row">
               <div>
+                <label for="preset">Preset</label>
+                <select id="preset" name="preset">
+                  <option value="">(none)</option>
+                  {% for preset in presets %}
+                    <option value="{{ preset }}">{{ preset }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div>
+                <label for="env_file">Env file path (optional)</label>
+                <input id="env_file" name="env_file" placeholder="configs/my-import.env" />
+              </div>
+              <div>
                 <label for="pause_seconds">Pause seconds</label>
-                <input id="pause_seconds" name="pause_seconds" value="0.0" />
+                <input id="pause_seconds" name="pause_seconds" value="{{ defaults.pause_seconds }}" />
               </div>
               <div>
                 <label for="candidate_limit">Candidate limit</label>
-                <input id="candidate_limit" name="candidate_limit" value="3" />
+                <input id="candidate_limit" name="candidate_limit" value="{{ defaults.candidate_limit }}" />
               </div>
               <div>
                 <label for="sentence_count">Sentence count</label>
-                <input id="sentence_count" name="sentence_count" value="2" />
+                <input id="sentence_count" name="sentence_count" value="{{ defaults.sentence_count }}" />
+              </div>
+              <div>
+                <label for="max_workers">Max workers</label>
+                <input id="max_workers" name="max_workers" value="{{ defaults.max_workers }}" />
               </div>
               <div>
                 <label class="check" style="margin-top: 1.7rem;">
-                  <input type="checkbox" name="anki_connect" checked /> Enable AnkiConnect add
+                  <input type="checkbox" name="anki_connect" {% if defaults.anki_connect %}checked{% endif %} /> Enable AnkiConnect add
                 </label>
               </div>
             </div>
@@ -182,33 +229,33 @@
             <div class="grid row">
               <div>
                 <label for="anki_url">AnkiConnect URL</label>
-                <input id="anki_url" name="anki_url" value="http://127.0.0.1:8765" />
+                <input id="anki_url" name="anki_url" value="{{ defaults.anki_url }}" />
               </div>
               <div>
                 <label for="deck_name">Deck name</label>
-                <input id="deck_name" name="deck_name" value="Keio::TestApp" />
+                <input id="deck_name" name="deck_name" value="{{ defaults.deck_name }}" />
               </div>
               <div>
                 <label for="model_name">Model name</label>
-                <input id="model_name" name="model_name" value="Japanese (Basic & Reversed)" />
+                <input id="model_name" name="model_name" value="{{ defaults.model_name }}" />
               </div>
               <div>
                 <label for="tags">Tags (comma separated)</label>
-                <input id="tags" name="tags" placeholder="jp,vocab,autofill" />
+                <input id="tags" name="tags" value="{{ defaults.tags }}" placeholder="jp,vocab,autofill" />
               </div>
               <div>
                 <label for="field_word">Expression field</label>
-                <input id="field_word" name="field_word" value="Expression" />
+                <input id="field_word" name="field_word" value="{{ defaults.field_word }}" />
               </div>
               <div>
                 <label for="field_meaning">Meaning field</label>
-                <input id="field_meaning" name="field_meaning" value="Meaning" />
+                <input id="field_meaning" name="field_meaning" value="{{ defaults.field_meaning }}" />
               </div>
               <div>
                 <label for="field_reading">Reading field</label>
-                <input id="field_reading" name="field_reading" value="Reading" />
+                <input id="field_reading" name="field_reading" value="{{ defaults.field_reading }}" />
               </div>
-              <label class="check"><input type="checkbox" name="allow_duplicates" /> Allow duplicates</label>
+              <label class="check"><input type="checkbox" name="allow_duplicates" {% if defaults.allow_duplicates %}checked{% endif %} /> Allow duplicates</label>
             </div>
 
             <hr />
@@ -216,25 +263,31 @@
             <div class="grid row">
               <div>
                 <label for="sentence_deck_name">Sentence deck</label>
-                <input id="sentence_deck_name" name="sentence_deck_name" value="Keio::TestApp::Examples" />
+                <input id="sentence_deck_name" name="sentence_deck_name" value="{{ defaults.sentence_deck_name }}" />
               </div>
               <div>
                 <label for="sentence_model_name">Sentence model</label>
-                <input id="sentence_model_name" name="sentence_model_name" value="Basic" />
+                <input id="sentence_model_name" name="sentence_model_name" value="{{ defaults.sentence_model_name }}" />
               </div>
               <div>
                 <label for="sentence_front_field">Sentence front field</label>
-                <input id="sentence_front_field" name="sentence_front_field" value="Front" />
+                <input id="sentence_front_field" name="sentence_front_field" value="{{ defaults.sentence_front_field }}" />
               </div>
               <div>
                 <label for="sentence_back_field">Sentence back field</label>
-                <input id="sentence_back_field" name="sentence_back_field" value="Back" />
+                <input id="sentence_back_field" name="sentence_back_field" value="{{ defaults.sentence_back_field }}" />
               </div>
             </div>
           </div>
 
           <button class="submit" type="submit">Generate Cards</button>
         </form>
+
+        <div id="progress-wrap" class="progress-wrap hidden">
+          <div id="progress-text">Waiting to start...</div>
+          <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+          <div id="progress-log" class="progress-log"></div>
+        </div>
 
         {% if error %}
           <div class="msg err">{{ error }}</div>
@@ -266,6 +319,11 @@
     </div>
 
     <script>
+      const form = document.querySelector('form[action="/generate"]');
+      const progressWrap = document.getElementById('progress-wrap');
+      const progressText = document.getElementById('progress-text');
+      const progressFill = document.getElementById('progress-fill');
+      const progressLog = document.getElementById('progress-log');
       const buttons = document.querySelectorAll('.tab-btn');
       const panels = {
         basic: document.getElementById('tab-basic'),
@@ -279,6 +337,57 @@
           button.classList.add('active');
           panels[button.dataset.tab].classList.add('active');
         });
+      });
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        progressWrap.classList.remove('hidden');
+        progressText.textContent = 'Starting job...';
+        progressFill.style.width = '0%';
+        progressLog.textContent = '';
+
+        const formData = new FormData(form);
+        let jobId = null;
+        try {
+          const startResp = await fetch('/api/start', {
+            method: 'POST',
+            body: formData,
+          });
+          const startData = await startResp.json();
+          jobId = startData.job_id;
+        } catch (error) {
+          progressText.textContent = `Failed to start: ${error}`;
+          return;
+        }
+
+        const poll = setInterval(async () => {
+          try {
+            const resp = await fetch(`/api/status/${jobId}`);
+            const data = await resp.json();
+
+            const total = Math.max(0, data.total || 0);
+            const completed = Math.max(0, data.completed || 0);
+            const pct = total > 0 ? Math.floor((completed / total) * 100) : 0;
+
+            progressText.textContent = `Status: ${data.status} (${completed}/${total})`;
+            progressFill.style.width = `${Math.min(100, pct)}%`;
+            progressLog.textContent = (data.log || []).join('\n');
+            progressLog.scrollTop = progressLog.scrollHeight;
+
+            if (data.status === 'done') {
+              clearInterval(poll);
+              progressText.textContent = `${data.message} ${data.anki_summary || ''}`.trim();
+              progressFill.style.width = '100%';
+            } else if (data.status === 'error') {
+              clearInterval(poll);
+              progressText.textContent = `Error: ${data.error || 'unknown error'}`;
+            }
+          } catch (error) {
+            clearInterval(poll);
+            progressText.textContent = `Polling error: ${error}`;
+          }
+        }, 700);
       });
     </script>
   </body>
