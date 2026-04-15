@@ -51,6 +51,15 @@ def _value_from_form(form_data: Mapping[str, str], key: str, default: str) -> st
     return stripped if stripped else default
 
 
+def _template_defaults(
+    *, selected_preset: str = "", selected_env_file: str = ""
+) -> dict[str, Any]:
+    defaults = dict(load_settings())
+    defaults["selected_preset"] = selected_preset
+    defaults["selected_env_file"] = selected_env_file
+    return defaults
+
+
 def _build_from_form(
     form_data: Mapping[str, str],
     progress_printer,
@@ -203,6 +212,8 @@ def _build_from_form(
         "output_path": str(output_path),
         "message": f"Generated {len(rows)} rows.",
         "anki_summary": anki_summary,
+        "preset": preset_name,
+        "env_file": env_file,
     }
 
 
@@ -250,6 +261,8 @@ def _run_job(job_id: str, form_data: dict[str, str]) -> None:
             anki_summary=result["anki_summary"],
             output_path=result["output_path"],
             preview=_serialize_rows_preview(result["rows"]),
+            preset=form_data.get("preset", ""),
+            env_file=form_data.get("env_file", ""),
         )
     except Exception as exc:  # noqa: BLE001
         _job_update(job_id, status="error", error=str(exc))
@@ -259,7 +272,7 @@ def _run_job(job_id: str, form_data: dict[str, str]) -> None:
 def index() -> str:
     return render_template(
         "index.html",
-        defaults=load_settings(),
+        defaults=_template_defaults(),
         presets=available_presets(),
     )
 
@@ -290,7 +303,10 @@ def generate() -> str:
         return render_template(
             "index.html",
             error=str(exc),
-            defaults=load_settings(),
+            defaults=_template_defaults(
+                selected_preset=request.form.get("preset", ""),
+                selected_env_file=request.form.get("env_file", ""),
+            ),
             presets=available_presets(),
         )
 
@@ -300,7 +316,10 @@ def generate() -> str:
         output_path=result["output_path"],
         message=result["message"],
         anki_summary=result["anki_summary"],
-        defaults=load_settings(),
+        defaults=_template_defaults(
+            selected_preset=result.get("preset", ""),
+            selected_env_file=result.get("env_file", ""),
+        ),
         presets=available_presets(),
     )
 

@@ -108,7 +108,6 @@
         padding: 0.8rem;
         background: #fffdf8;
       }
-      .progress-wrap.hidden { display: none; }
       .progress-bar {
         margin-top: 0.5rem;
         height: 12px;
@@ -151,7 +150,7 @@
     <div class="wrap">
       <div class="card">
         <h1>Anki Autofiller</h1>
-        <p class="subhead">Paste words, generate cards, and optionally push them into Keio::TestApp.</p>
+        <p class="subhead">Paste words, generate cards, and optionally push them into Anki.</p>
 
         <form method="post" action="/generate">
           <div class="tabs" role="tablist" aria-label="Settings tabs">
@@ -181,6 +180,10 @@
             </div>
 
             <div class="note">
+              Presets are available in the Advanced tab, and the progress panel below stays visible so you can see job status immediately.
+            </div>
+
+            <div class="note">
               Pitch accent is generated automatically from the installed pitch database and embedded into the Reading field.
               If "Put sentences in separate cards" is enabled, vocab cards stay short and example cards are added separately.
             </div>
@@ -193,13 +196,13 @@
                 <select id="preset" name="preset">
                   <option value="">(none)</option>
                   {% for preset in presets %}
-                    <option value="{{ preset }}">{{ preset }}</option>
+                    <option value="{{ preset }}" {% if defaults.selected_preset == preset %}selected{% endif %}>{{ preset }}</option>
                   {% endfor %}
                 </select>
               </div>
               <div>
                 <label for="env_file">Env file path (optional)</label>
-                <input id="env_file" name="env_file" placeholder="configs/my-import.env" />
+                <input id="env_file" name="env_file" placeholder="configs/my-import.env" value="{{ defaults.selected_env_file }}" />
               </div>
               <div>
                 <label for="pause_seconds">Pause seconds</label>
@@ -283,7 +286,7 @@
           <button class="submit" type="submit">Generate Cards</button>
         </form>
 
-        <div id="progress-wrap" class="progress-wrap hidden">
+        <div id="progress-wrap" class="progress-wrap">
           <div id="progress-text">Waiting to start...</div>
           <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
           <div id="progress-log" class="progress-log"></div>
@@ -342,7 +345,6 @@
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
 
-        progressWrap.classList.remove('hidden');
         progressText.textContent = 'Starting job...';
         progressFill.style.width = '0%';
         progressLog.textContent = '';
