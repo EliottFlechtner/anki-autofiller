@@ -216,7 +216,6 @@ export default function App() {
         <header className="hero">
           <p className="eyebrow">Anki Autofiller</p>
           <h1>Simple Japanese Card Generator</h1>
-          <p className="sub">Start with the essentials. Expand only what you need.</p>
         </header>
 
         <section className="status-block" aria-live="polite">
