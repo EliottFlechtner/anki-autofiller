@@ -1,0 +1,44 @@
+name: compose-smoke
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare env
+        run: cp .env.docker.example .env.docker
+
+      - name: Bring stack up
+        run: make up
+
+      - name: Wait for health
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:5000/healthz >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Health endpoint did not become ready in time"
+          exit 1
+
+      - name: Verify bootstrap endpoint
+        run: curl -fsS http://127.0.0.1:5000/api/bootstrap >/dev/null
+
+      - name: Show status and logs on failure
+        if: failure()
+        run: |
+          make ps || true
+          docker compose --env-file .env.docker logs --tail=200 || true
+
+      - name: Tear down
+        if: always()
+        run: make down

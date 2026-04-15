@@ -48,7 +48,7 @@ cp .env.docker.example .env.docker
 2. Start the service:
 
 ```bash
-./scripts/docker-up.sh --env-file .env.docker
+make up
 ```
 
 3. Open:
@@ -78,6 +78,8 @@ make ps
 make config
 make dev-up
 make release-check
+make smoke
+make backup
 ```
 
 What this pipeline gives you:
@@ -86,6 +88,10 @@ What this pipeline gives you:
 - container health checks via `/healthz`
 - persistent output in local `output/`
 - built-in host access to desktop AnkiConnect via `host.docker.internal`
+
+Image pinning:
+
+- set `ANKI_AUTOFILLER_IMAGE_TAG` in `.env.docker` (for example `v0.1`) to lock deployment to a specific release image.
 
 If Docker build fails at `pip install` with `Temporary failure in name resolution`, that is a Docker DNS/network issue. `docker-up.sh` now pulls a prebuilt image first, and if it must build locally it fails fast instead of hanging.
 
@@ -103,6 +109,25 @@ PIP_INDEX_URL=https://pypi.org/simple
 - tries to start from an existing local image first (`--no-build`)
 - only builds when no local image is available
 - fails fast on pip DNS issues instead of hanging for a long time
+
+`make smoke` behavior:
+
+- starts the stack
+- validates `/healthz`
+- validates `/api/bootstrap`
+
+### Ops Runbook (Minimal)
+
+1. Start service: `make up`
+2. Verify quickly: `make smoke`
+3. View status: `make ps`
+4. Follow logs: `make logs`
+5. Backup latest TSV: `make backup`
+6. Stop service: `make down`
+
+CI smoke workflow file:
+
+- `.github/workflows/compose-smoke.yml`
 
 Development container mode (bind-mount source):
 
