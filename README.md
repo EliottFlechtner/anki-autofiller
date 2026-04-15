@@ -20,6 +20,7 @@ It can also:
 - auto-generate pitch accent SVG and embed it into `Reading`
 - add notes directly to Anki via AnkiConnect
 - run in either CLI mode or local web UI mode
+- use a React + Vite SPA frontend for the web UI
 
 ## Setup
 
@@ -82,7 +83,7 @@ The launcher also picks a free Flask port automatically, so it avoids the common
 
 For the normal static build, run `cd frontend && npm run build` before starting Flask.
 
-Open `http://127.0.0.1:5000`, paste words line-by-line, and click `Generate Cards`.
+When you run `python3 web_app.py`, open `http://127.0.0.1:5000`. When you run `scripts/dev.py`, use the Flask URL printed in the launcher output.
 
 The web page can:
 
@@ -177,7 +178,9 @@ Your installed add-on exposes a `Pitch Accent` menu in Anki and an editor toolba
 - `anki_autofiller.py`: backward-compatible CLI entrypoint
 - `cli.py`: backward-compatible CLI wrapper
 - `web_app.py`: backward-compatible web wrapper
-- `templates/`: Flask templates
+- `templates/spa.html`: React SPA mount page
+- `frontend/`: Vite + React source and build config
+- `scripts/dev.py`: one-command local dev launcher (Vite + Flask)
 - `presets/`: reusable env-style config presets
 
 ## Notes

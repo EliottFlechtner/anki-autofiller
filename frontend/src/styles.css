@@ -1,0 +1,223 @@
+:root {
+  --bg: #f2efe8;
+  --panel: #fcfaf5;
+  --ink: #1c1b18;
+  --muted: #736e60;
+  --line: #d8ceb8;
+  --accent: #0f5f6c;
+  --accent-2: #f28c28;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", "Source Sans 3", sans-serif;
+  color: var(--ink);
+  background: radial-gradient(circle at 20% 5%, #fffdf7 0%, #f1ece2 58%, #e8dfcf 100%);
+  min-height: 100vh;
+}
+
+.shell {
+  position: relative;
+  min-height: 100vh;
+  padding: 2rem 1rem;
+}
+
+.orb {
+  position: fixed;
+  border-radius: 999px;
+  filter: blur(4px);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.orb-a {
+  width: 240px;
+  height: 240px;
+  background: #4ba6aa;
+  top: -70px;
+  right: 10%;
+}
+
+.orb-b {
+  width: 180px;
+  height: 180px;
+  background: #f28c28;
+  bottom: 10%;
+  left: 8%;
+}
+
+.panel {
+  max-width: 1100px;
+  margin: 0 auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 12px 34px rgba(27, 22, 14, 0.12);
+  padding: 1.2rem;
+}
+
+.eyebrow {
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+  margin: 0;
+}
+
+h1 {
+  margin: 0.2rem 0 0.4rem;
+  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+}
+
+.sub {
+  margin: 0;
+  color: var(--muted);
+}
+
+.status-block {
+  border: 1px solid var(--line);
+  background: #fffdf8;
+  border-radius: 12px;
+  padding: 0.8rem;
+  margin-top: 1rem;
+}
+
+.status-head {
+  font-weight: 600;
+}
+
+.progress-track {
+  margin-top: 0.5rem;
+  height: 12px;
+  border-radius: 999px;
+  background: #ece4d5;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent), #16a0ab);
+  transition: width 200ms ease;
+}
+
+.progress-meta {
+  margin-top: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.log-box {
+  margin-top: 0.5rem;
+  max-height: 160px;
+  overflow: auto;
+  font-size: 0.82rem;
+  background: #f5f0e6;
+  padding: 0.55rem;
+  border-radius: 8px;
+  white-space: pre-wrap;
+}
+
+.result-line {
+  margin: 0.4rem 0 0;
+  font-size: 0.92rem;
+}
+
+.tabs {
+  margin-top: 1rem;
+  display: flex;
+  gap: 0.6rem;
+}
+
+.tabs button {
+  border: 1px solid var(--line);
+  background: #fffaf2;
+  border-radius: 999px;
+  padding: 0.55rem 0.9rem;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.tabs button.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.form-grid {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+label.full {
+  grid-column: 1 / -1;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  padding: 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffefb;
+}
+
+textarea {
+  min-height: 180px;
+}
+
+.toggle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.toggle input {
+  width: auto;
+}
+
+button.submit,
+button.ghost {
+  border: none;
+  border-radius: 10px;
+  padding: 0.7rem 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button.submit {
+  background: var(--accent-2);
+  color: #251606;
+}
+
+button.ghost {
+  background: #dfefe9;
+  color: #093f44;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+@media (max-width: 850px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -64,6 +64,12 @@ def _template_defaults(
     return defaults
 
 
+@app.get("/api/bootstrap")
+def api_bootstrap() -> Any:
+    defaults = _template_defaults()
+    return jsonify({"defaults": defaults, "presets": available_presets()})
+
+
 def _resolved_settings_for_request(form_data: Mapping[str, str]) -> dict[str, Any]:
     preset_name = _value_from_form(form_data, "preset", "")
     env_file = _value_from_form(form_data, "env_file", "")
@@ -297,9 +303,7 @@ def _run_job(job_id: str, form_data: dict[str, str]) -> None:
 @app.get("/")
 def index() -> str:
     return render_template(
-        "index.html",
-        defaults=_template_defaults(),
-        presets=available_presets(),
+        "spa.html",
         vite_dev_server_url=os.environ.get("ANKI_AUTOFILLER_VITE_DEV_SERVER_URL", ""),
     )
 
@@ -324,34 +328,13 @@ def api_status(job_id: str) -> Any:
 
 @app.post("/generate")
 def generate() -> str:
-    try:
-        result = _build_from_form(request.form.to_dict(flat=True), print)
-    except Exception as exc:  # noqa: BLE001
-        return render_template(
-            "index.html",
-            error=str(exc),
-            defaults=_template_defaults(
-                selected_preset=request.form.get("preset", ""),
-                selected_env_file=request.form.get("env_file", ""),
-            ),
-            presets=available_presets(),
-            vite_dev_server_url=os.environ.get(
-                "ANKI_AUTOFILLER_VITE_DEV_SERVER_URL", ""
-            ),
-        )
-
-    return render_template(
-        "index.html",
-        preview=result["rows"],
-        output_path=result["output_path"],
-        message=result["message"],
-        anki_summary=result["anki_summary"],
-        defaults=_template_defaults(
-            selected_preset=result.get("preset", ""),
-            selected_env_file=result.get("env_file", ""),
+    return (
+        jsonify(
+            {
+                "error": "Legacy /generate route is no longer used. Use /api/start and /api/status/<job_id>.",
+            }
         ),
-        presets=available_presets(),
-        vite_dev_server_url=os.environ.get("ANKI_AUTOFILLER_VITE_DEV_SERVER_URL", ""),
+        410,
     )
 
 

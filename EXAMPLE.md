@@ -33,9 +33,11 @@ npm install
 
 The launcher automatically picks free ports for both the Vite dev server and Flask.
 
+Use the Flask URL printed by the launcher when it starts.
+
 If you want the lower-level manual flow instead, run `cd frontend && npm install && npm run dev` in one terminal and start Flask in another with `ANKI_AUTOFILLER_VITE_DEV_SERVER_URL=http://127.0.0.1:<vite-port> ./.venv/bin/python web_app.py`.
 
-2. Open `http://127.0.0.1:5000`.
+2. Open the Flask URL from launcher output (or `http://127.0.0.1:5000` when running only `web_app.py`).
 
 3. In `Basic` tab:
 - Paste your word list (one word per line).
