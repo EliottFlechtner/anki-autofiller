@@ -52,7 +52,7 @@ smoke: up
 	@python scripts/docker_wrapper.py healthz
 
 backup:
-	@python -c "import shutil, os; os.path.exists('output/anki_import.tsv') and shutil.copy('output/anki_import.tsv', 'output/anki_import.tsv.bak') and print('Backed up to output/anki_import.tsv.bak') or print('No TSV file to backup')"
+	@python -c "import shutil, os; (os.path.exists('output/anki_import.tsv') and (shutil.copy('output/anki_import.tsv', 'output/anki_import.tsv.bak'), print('Backed up to output/anki_import.tsv.bak'))) or (not os.path.exists('output/anki_import.tsv') and print('No TSV file to backup'))"
 
 test:
 	python -m unittest discover -s tests -p "test_*.py" -v
