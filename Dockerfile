@@ -6,8 +6,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+ARG PIP_INDEX_URL
+ARG PIP_EXTRA_INDEX_URL
+ARG PIP_RETRIES=1
+ARG PIP_TIMEOUT=15
+
 COPY requirements.txt ./
-RUN python -m pip install --no-cache-dir -r requirements.txt
+RUN python -m pip install --no-cache-dir --retries ${PIP_RETRIES} --timeout ${PIP_TIMEOUT} -r requirements.txt
 
 COPY autofiller ./autofiller
 COPY templates ./templates

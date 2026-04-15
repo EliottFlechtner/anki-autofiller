@@ -11,7 +11,7 @@ help:
 	@echo "  make release-check - Validate release prerequisites"
 
 up:
-	./scripts/docker-up.sh --env-file .env.docker
+	./scripts/docker-up.sh
 
 down:
 	./scripts/docker-down.sh
@@ -29,6 +29,6 @@ dev-up:
 	docker compose -f docker-compose.dev.yml up --build
 
 release-check:
-	@test -f .env.docker || (echo ".env.docker not found. Run: cp .env.docker.example .env.docker" && exit 1)
+	@test -f .env.docker || cp .env.docker.example .env.docker
 	docker compose --env-file .env.docker config >/dev/null
 	@echo "Release check OK"

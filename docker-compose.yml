@@ -3,7 +3,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ghcr.io/eliottflechtner/anki-autofiller:local
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+        PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
+        PIP_RETRIES: ${PIP_RETRIES:-1}
+        PIP_TIMEOUT: ${PIP_TIMEOUT:-15}
+    image: ghcr.io/eliottflechtner/anki-autofiller:latest
     container_name: anki-autofiller
     restart: unless-stopped
     ports:

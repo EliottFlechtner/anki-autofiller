@@ -87,6 +87,23 @@ What this pipeline gives you:
 - persistent output in local `output/`
 - built-in host access to desktop AnkiConnect via `host.docker.internal`
 
+If Docker build fails at `pip install` with `Temporary failure in name resolution`, that is a Docker DNS/network issue. `docker-up.sh` now pulls a prebuilt image first, and if it must build locally it fails fast instead of hanging.
+
+Optional override in `.env.docker` when using a mirror/proxy:
+
+```bash
+PIP_INDEX_URL=https://pypi.org/simple
+# PIP_EXTRA_INDEX_URL=https://your-mirror/simple
+# PIP_RETRIES=1
+# PIP_TIMEOUT=15
+```
+
+`make up` behavior:
+
+- tries to start from an existing local image first (`--no-build`)
+- only builds when no local image is available
+- fails fast on pip DNS issues instead of hanging for a long time
+
 Development container mode (bind-mount source):
 
 ```bash
