@@ -100,12 +100,12 @@ def run_build_dev():
     """Build dev image with platform-specific settings."""
     if platform.system() == "Windows":
         # Windows: skip BUILDKIT and --network=host
-        cmd = ["docker", "build", "-t", "jisho2anki:dev", "."]
+        cmd = ["docker", "build", "-f", "config/Dockerfile", "-t", "jisho2anki:dev", "."]
     else:
         # Linux/Mac: use BUILDKIT for DNS fixes
         env = os.environ.copy()
         env["DOCKER_BUILDKIT"] = "1"
-        cmd = ["docker", "build", "--network=host", "-t", "jisho2anki:dev", "."]
+        cmd = ["docker", "build", "--network=host", "-f", "config/Dockerfile", "-t", "jisho2anki:dev", "."]
         return subprocess.run(cmd, env=env).returncode
     
     return subprocess.run(cmd).returncode

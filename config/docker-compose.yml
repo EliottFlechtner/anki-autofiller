@@ -16,7 +16,7 @@ services:
       ANKI_JISHO2ANKI_PRESET: ${ANKI_JISHO2ANKI_PRESET:-}
       ANKI_PITCH_ADDON_DIR: /anki-pitch-addon
     volumes:
-      - ./:/app
+      - ../:/app
       - ${HOME}/.local/share/Anki2/addons21/148002038:/anki-pitch-addon:ro
     command: ["python", "-m", "autofiller.web_app"]
     healthcheck:
