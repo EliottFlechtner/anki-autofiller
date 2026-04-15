@@ -19,6 +19,14 @@ except ModuleNotFoundError as exc:
     "Flask dependency missing for web_app tests. Install requirements or run make test-docker.",
 )
 class WebApiEndpointTests(unittest.TestCase):
+    def test_healthz(self) -> None:
+        app = web_app_module.app
+        with app.test_client() as client:
+            response = client.get("/healthz")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {"status": "ok"})
+
     def test_bootstrap_returns_defaults_and_presets(self) -> None:
         app = web_app_module.app
 
@@ -112,6 +120,44 @@ class WebApiEndpointTests(unittest.TestCase):
             self.assertEqual(payload["message"], "Generated 1 rows.")
             self.assertEqual(payload["output_path"], "output/test.tsv")
             self.assertTrue(payload["preview"])
+
+    def test_start_and_status_error_path(self) -> None:
+        app = web_app_module.app
+
+        class _ImmediateThread:
+            def __init__(self, target, args, daemon):
+                self._target = target
+                self._args = args
+                self.daemon = daemon
+
+            def start(self):
+                self._target(*self._args)
+
+        with (
+            app.test_client() as client,
+            patch("autofiller.web_app.threading.Thread", _ImmediateThread),
+            patch(
+                "autofiller.web_app._build_from_form",
+                side_effect=ValueError("boom"),
+            ),
+        ):
+            start_resp = client.post("/api/start", data={"words": "食べる"})
+            self.assertEqual(start_resp.status_code, 200)
+            job_id = start_resp.get_json()["job_id"]
+
+            status_resp = client.get(f"/api/status/{job_id}")
+            self.assertEqual(status_resp.status_code, 200)
+            payload = status_resp.get_json()
+            self.assertEqual(payload["status"], "error")
+            self.assertEqual(payload["error"], "boom")
+
+    def test_status_not_found(self) -> None:
+        app = web_app_module.app
+        with app.test_client() as client:
+            response = client.get("/api/status/does-not-exist")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.get_json()["error"], "job not found")
 
 
 if __name__ == "__main__":
