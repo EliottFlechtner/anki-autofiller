@@ -1,3 +1,5 @@
+"""CLI entrypoint and argument parsing for the Jisho2Anki pipeline."""
+
 from __future__ import annotations
 
 import argparse
@@ -14,6 +16,7 @@ from .pipeline import build_rows
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse CLI arguments, merging defaults from preset/env-file settings."""
     bootstrap = argparse.ArgumentParser(add_help=False)
     bootstrap.add_argument(
         "--preset",
@@ -173,6 +176,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """Run the end-to-end CLI flow: load words, generate rows, write/export."""
     args = parse_args()
 
     input_path = Path(args.input)

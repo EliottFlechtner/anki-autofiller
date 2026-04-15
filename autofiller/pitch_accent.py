@@ -1,3 +1,5 @@
+"""Pitch accent lookup and SVG rendering from the Migaku pitch addon databases."""
+
 from __future__ import annotations
 
 import csv
@@ -70,6 +72,7 @@ def _addon_roots() -> list[Path]:
 
 @lru_cache(maxsize=1)
 def _load_pitch_dict() -> dict[str, list[tuple[str, str]]]:
+    """Load and merge user and wadoku pitch dictionaries from addon paths."""
     combined: dict[str, list[tuple[str, str]]] = {}
 
     def add_entry(orth: str, hira: str, patt: str) -> None:
@@ -133,6 +136,7 @@ def _select_best_pattern(
 
 
 def pitch_pattern(expression: str, reading: str) -> tuple[str, str] | None:
+    """Return `(hira, pattern)` if pitch data exists for the expression."""
     expr = _clean_expression(expression)
     if not expr:
         return None
@@ -203,6 +207,7 @@ def _draw_path(x: int, y: int, step_width: int, direction: str) -> str:
 
 
 def render_pitch_svg(word: str, pattern: str) -> str:
+    """Render a compact SVG pitch graph from morae and accent pattern symbols."""
     morae = _morae(word)
     if not morae or not pattern:
         return ""
@@ -241,6 +246,7 @@ def render_pitch_svg(word: str, pattern: str) -> str:
 
 
 def enrich_html_with_pitch(expression: str, reading: str) -> str | None:
+    """Build HTML-safe pitch SVG snippet wrapped in sentinel comments."""
     match = pitch_pattern(expression, reading)
     if not match:
         return None

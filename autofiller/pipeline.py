@@ -1,3 +1,5 @@
+"""Pipeline for Jisho lookup, row generation, and optional enrichment."""
+
 from __future__ import annotations
 
 import time
@@ -10,6 +12,7 @@ from .pitch_accent import enrich_html_with_pitch
 
 
 def format_sentences(sentences: list[ExampleSentence]) -> str:
+    """Format sentence pairs into the HTML snippet expected by the meaning field."""
     if not sentences:
         return ""
     parts = [f"例文: {s.japanese} - {s.english}" for s in sentences]
@@ -19,6 +22,7 @@ def format_sentences(sentences: list[ExampleSentence]) -> str:
 def default_interactive_selector(
     word: str, candidates: list[SearchCandidate]
 ) -> SearchCandidate:
+    """Prompt on stdin/stdout to let users choose the best dictionary candidate."""
     print(f"\nReview: {word}")
     for idx, candidate in enumerate(candidates, start=1):
         print(f"  {idx}. reading='{candidate.reading}' meaning='{candidate.meaning}'")
@@ -48,6 +52,7 @@ def _build_word_result(
     interactive_review: bool,
     selector: Callable[[str, list[SearchCandidate]], SearchCandidate],
 ) -> tuple[CardRow, list[SentenceCardRow], str, str]:
+    """Build the generated row(s) for a single source word."""
     client = JishoClient()
     candidates, sentences = client.search(
         word,
@@ -109,6 +114,7 @@ def build_rows(
     selector: Callable[[str, list[SearchCandidate]], SearchCandidate] | None = None,
     progress_printer: Callable[[str], None] | None = print,
 ) -> tuple[list[CardRow], list[SentenceCardRow]]:
+    """Build card rows for all words, optionally in parallel with progress reporting."""
     rows: list[CardRow] = [
         CardRow(word="", meaning="", reading="") for _ in range(len(words))
     ]

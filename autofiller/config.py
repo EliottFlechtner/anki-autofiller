@@ -1,3 +1,5 @@
+"""Configuration loading for CLI and web app execution modes."""
+
 from __future__ import annotations
 
 import os
@@ -67,10 +69,12 @@ ENV_TO_KEY = {
 
 
 def _parse_bool(raw: str) -> bool:
+    """Parse a permissive truthy/falsy string into a boolean."""
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _coerce_value(key: str, raw: str) -> Any:
+    """Coerce a raw string value to the target setting type for `key`."""
     if key in {
         "include_header",
         "interactive_review",
@@ -89,6 +93,7 @@ def _coerce_value(key: str, raw: str) -> Any:
 
 
 def _load_env_file(path: Path) -> dict[str, str]:
+    """Load `KEY=VALUE` pairs from an env-style file if it exists."""
     values: dict[str, str] = {}
     if not path.exists():
         return values
@@ -107,6 +112,7 @@ def _load_env_file(path: Path) -> dict[str, str]:
 
 
 def _resolve_preset_file(preset_name: str | None) -> Path | None:
+    """Resolve a preset name to `presets/<name>.env`, validating input."""
     if not preset_name:
         return None
     cleaned = preset_name.strip()
@@ -120,6 +126,7 @@ def _resolve_preset_file(preset_name: str | None) -> Path | None:
 
 
 def available_presets() -> list[str]:
+    """Return available preset names from the `presets/` directory."""
     preset_dir = Path("presets")
     if not preset_dir.exists():
         return []
@@ -133,6 +140,11 @@ def load_settings(
     preset_name: str | None = None,
     env_file: str | None = None,
 ) -> dict[str, Any]:
+    """Load merged settings from defaults, files, and environment variables.
+
+    Precedence from lowest to highest:
+    defaults -> .env -> .env.local -> preset -> explicit env file -> process env.
+    """
     settings = dict(DEFAULT_SETTINGS)
 
     file_sources: list[Path] = [Path(".env"), Path(".env.local")]

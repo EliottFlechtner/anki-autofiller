@@ -1,3 +1,5 @@
+"""Jisho HTTP client and extractors for word candidates and example sentences."""
+
 from __future__ import annotations
 
 import html
@@ -7,6 +9,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from . import __version__
 from .models import ExampleSentence, SearchCandidate
 
 JISHO_API = "https://jisho.org/api/v1/search/words?keyword={query}"
@@ -16,10 +19,11 @@ class JishoClient:
     """Minimal client for Jisho dictionary search and example extraction."""
 
     def _request(self, url: str) -> str:
+        """Perform a GET request and return decoded response body text."""
         req = urllib.request.Request(
             url,
             headers={
-                "User-Agent": "jisho2anki/0.3",
+                "User-Agent": f"jisho2anki/{__version__}",
                 "Accept": "application/json,text/html",
             },
         )
@@ -28,6 +32,7 @@ class JishoClient:
             return response.read().decode("utf-8", errors="replace")
 
     def _extract_candidates(self, payload: str, limit: int) -> list[SearchCandidate]:
+        """Extract reading/meaning candidates from the Jisho API JSON payload."""
         try:
             data = json.loads(payload)
         except json.JSONDecodeError:
@@ -56,6 +61,7 @@ class JishoClient:
         return candidates
 
     def _strip_tags(self, value: str) -> str:
+        """Convert a small HTML fragment to normalized plain text."""
         text = re.sub(r"<[^>]+>", "", value)
         text = html.unescape(text)
         text = re.sub(r"\s+", " ", text)
@@ -64,6 +70,7 @@ class JishoClient:
     def _extract_sentences(
         self, html_payload: str, limit: int
     ) -> list[ExampleSentence]:
+        """Extract deduplicated Japanese/English sentence pairs from search HTML."""
         if limit <= 0:
             return []
 
@@ -98,6 +105,7 @@ class JishoClient:
     def search(
         self, word: str, candidate_limit: int, sentence_limit: int
     ) -> tuple[list[SearchCandidate], list[ExampleSentence]]:
+        """Search Jisho API/HTML endpoints for candidates and example sentences."""
         query = urllib.parse.quote(word)
         api_url = JISHO_API.format(query=query)
         html_url = f"https://jisho.org/search/{query}"

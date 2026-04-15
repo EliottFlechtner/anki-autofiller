@@ -1,3 +1,5 @@
+"""Flask web API and SPA host for running Jisho2Anki from a browser."""
+
 from __future__ import annotations
 
 import os
@@ -23,6 +25,7 @@ PROGRESS_RE = re.compile(r"^\[(\d+)/(\d+)\]")
 
 
 def _runtime_env(name: str, default: str) -> str:
+    """Read runtime env from current or legacy prefix with fallback default."""
     return os.environ.get(
         f"ANKI_JISHO2ANKI_{name}",
         os.environ.get(f"ANKI_AUTOFILLER_{name}", default),
@@ -49,6 +52,7 @@ def _static_stylesheet_filename() -> str:
 
 
 def _bool_from_form(value: str | None, default: bool = False) -> bool:
+    """Parse checkbox/form values into a deterministic boolean."""
     if value is None:
         return default
     normalized = value.strip().lower()
@@ -60,12 +64,14 @@ def _bool_from_form(value: str | None, default: bool = False) -> bool:
 
 
 def _job_update(job_id: str, **updates: Any) -> None:
+    """Apply thread-safe updates to the in-memory job state map."""
     with JOB_LOCK:
         if job_id in JOBS:
             JOBS[job_id].update(updates)
 
 
 def _serialize_rows_preview(rows: list[Any], limit: int = 60) -> list[dict[str, str]]:
+    """Serialize generated rows into a lightweight preview payload."""
     return [
         {"word": row.word, "meaning": row.meaning, "reading": row.reading}
         for row in rows[:limit]
@@ -73,6 +79,7 @@ def _serialize_rows_preview(rows: list[Any], limit: int = 60) -> list[dict[str, 
 
 
 def _value_from_form(form_data: Mapping[str, str], key: str, default: str) -> str:
+    """Read and trim a form value, falling back to `default` when blank."""
     raw = form_data.get(key)
     if raw is None:
         return default
@@ -83,6 +90,7 @@ def _value_from_form(form_data: Mapping[str, str], key: str, default: str) -> st
 def _template_defaults(
     *, selected_preset: str = "", selected_env_file: str = ""
 ) -> dict[str, Any]:
+    """Return default settings payload used by the frontend bootstrap."""
     defaults = dict(load_settings())
     defaults["selected_preset"] = selected_preset
     defaults["selected_env_file"] = selected_env_file
@@ -91,11 +99,13 @@ def _template_defaults(
 
 @app.get("/api/bootstrap")
 def api_bootstrap() -> Any:
+    """Return initial defaults and available presets for the SPA."""
     defaults = _template_defaults()
     return jsonify({"defaults": defaults, "presets": available_presets()})
 
 
 def _resolved_settings_for_request(form_data: Mapping[str, str]) -> dict[str, Any]:
+    """Resolve settings for a request from selected preset/env-file inputs."""
     preset_name = _value_from_form(form_data, "preset", "")
     env_file = _value_from_form(form_data, "env_file", "")
     return load_settings(
@@ -108,6 +118,7 @@ def _build_from_form(
     form_data: Mapping[str, str],
     progress_printer,
 ) -> dict[str, Any]:
+    """Run the generation pipeline from submitted form values and settings."""
     preset_name = _value_from_form(form_data, "preset", "")
     env_file = _value_from_form(form_data, "env_file", "")
     settings = _resolved_settings_for_request(form_data)
@@ -260,6 +271,7 @@ def _build_from_form(
 
 @app.post("/api/settings-preview")
 def api_settings_preview() -> Any:
+    """Preview merged settings for the currently selected preset/env file."""
     form_data = request.form.to_dict(flat=True)
     preset_name = _value_from_form(form_data, "preset", "")
     env_file = _value_from_form(form_data, "env_file", "")
@@ -275,6 +287,7 @@ def api_settings_preview() -> Any:
 
 
 def _run_job(job_id: str, form_data: dict[str, str]) -> None:
+    """Background worker for a single generation request."""
     with JOB_LOCK:
         JOBS[job_id] = {
             "status": "running",
@@ -327,6 +340,7 @@ def _run_job(job_id: str, form_data: dict[str, str]) -> None:
 
 @app.get("/")
 def index() -> str:
+    """Serve the SPA shell with either Vite dev assets or built assets."""
     vite_dev_server_url = _runtime_env("VITE_DEV_SERVER_URL", "")
     return render_template(
         "spa.html",
@@ -339,11 +353,13 @@ def index() -> str:
 
 @app.get("/healthz")
 def healthz() -> Any:
+    """Lightweight health endpoint for compose/ops checks."""
     return jsonify({"status": "ok"})
 
 
 @app.post("/api/start")
 def api_start() -> Any:
+    """Start an async generation job and return its job ID."""
     job_id = uuid.uuid4().hex
     form_data = request.form.to_dict(flat=True)
     thread = threading.Thread(target=_run_job, args=(job_id, form_data), daemon=True)
@@ -353,6 +369,7 @@ def api_start() -> Any:
 
 @app.get("/api/status/<job_id>")
 def api_status(job_id: str) -> Any:
+    """Return current job status, progress, and final output summary."""
     with JOB_LOCK:
         job = JOBS.get(job_id)
     if not job:
@@ -362,6 +379,7 @@ def api_status(job_id: str) -> Any:
 
 @app.post("/generate")
 def generate() -> str:
+    """Legacy endpoint retained as explicit API migration notice."""
     return (
         jsonify(
             {

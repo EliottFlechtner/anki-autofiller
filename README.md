@@ -102,6 +102,7 @@ What this pipeline gives you:
 Image pinning:
 
 - set `ANKI_JISHO2ANKI_IMAGE_TAG` in `.env.docker` (for example `v0.1`) to lock deployment to a specific release image.
+- set `ANKI_JISHO2ANKI_IMAGE_TAG` in `.env.docker` (for example `v1.0.0`) to lock deployment to a specific release image.
 
 If Docker build fails at `pip install` with `Temporary failure in name resolution`, that is a Docker DNS/network issue. `docker-up.sh` now pulls a prebuilt image first, and if it must build locally it fails fast instead of hanging.
 
@@ -150,7 +151,9 @@ docker compose -f docker-compose.dev.yml up --build
 GitHub Actions now builds and publishes a container image to GHCR on:
 
 - pushes to `main`
-- tags like `v0.1`, `v0.2`, etc.
+- tags like `v1.0.0`, `v1.1.0`, etc.
+
+Release notes are tracked in `CHANGELOG.md`.
 
 Workflow file:
 

@@ -1,3 +1,5 @@
+"""Thin AnkiConnect client for creating decks and adding notes."""
+
 from __future__ import annotations
 
 import json
@@ -8,6 +10,7 @@ from .models import CardRow, SentenceCardRow
 
 
 def invoke(url: str, action: str, params: dict) -> object:
+    """Invoke an AnkiConnect action and return its `result` payload."""
     payload = json.dumps({"action": action, "version": 6, "params": params}).encode(
         "utf-8"
     )
@@ -52,6 +55,7 @@ def add_rows_to_anki(
     tags: list[str],
     allow_duplicates: bool,
 ) -> tuple[int, int]:
+    """Add vocabulary card rows to Anki and return (success_count, failed_count)."""
     notes: list[dict] = []
     for row in rows:
         notes.append(
@@ -85,6 +89,7 @@ def add_sentence_rows_to_anki(
     tags: list[str],
     allow_duplicates: bool,
 ) -> tuple[int, int]:
+    """Add sentence card rows to Anki and return (success_count, failed_count)."""
     notes: list[dict] = []
     for row in rows:
         notes.append(
@@ -107,6 +112,7 @@ def add_sentence_rows_to_anki(
 
 
 def add_notes(*, notes: list[dict], url: str) -> tuple[int, int]:
+    """Create destination decks and submit note payloads through AnkiConnect."""
     if not notes:
         return 0, 0
 
