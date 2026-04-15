@@ -10,7 +10,19 @@ from .models import CardRow, SentenceCardRow
 
 
 def invoke(url: str, action: str, params: dict) -> object:
-    """Invoke an AnkiConnect action and return its `result` payload."""
+    """Invoke an AnkiConnect action and return its `result` payload.
+
+    Args:
+        url: AnkiConnect HTTP endpoint URL.
+        action: AnkiConnect action name.
+        params: Action payload parameters.
+
+    Returns:
+        The `result` value from the AnkiConnect response.
+
+    Raises:
+        RuntimeError: If AnkiConnect is unreachable or returns an error field.
+    """
     payload = json.dumps({"action": action, "version": 6, "params": params}).encode(
         "utf-8"
     )
@@ -55,7 +67,22 @@ def add_rows_to_anki(
     tags: list[str],
     allow_duplicates: bool,
 ) -> tuple[int, int]:
-    """Add vocabulary card rows to Anki and return (success_count, failed_count)."""
+    """Add vocabulary card rows to Anki.
+
+    Args:
+        rows: Card rows to submit.
+        url: AnkiConnect endpoint.
+        deck_name: Target deck name.
+        model_name: Target note type/model.
+        word_field: Model field name for source word/expression.
+        meaning_field: Model field name for meaning.
+        reading_field: Model field name for reading.
+        tags: Tags to attach to created notes.
+        allow_duplicates: Whether duplicate notes are allowed.
+
+    Returns:
+        Tuple of `(success_count, failed_count)`.
+    """
     notes: list[dict] = []
     for row in rows:
         notes.append(
@@ -89,7 +116,21 @@ def add_sentence_rows_to_anki(
     tags: list[str],
     allow_duplicates: bool,
 ) -> tuple[int, int]:
-    """Add sentence card rows to Anki and return (success_count, failed_count)."""
+    """Add sentence card rows to Anki.
+
+    Args:
+        rows: Sentence card rows to submit.
+        url: AnkiConnect endpoint.
+        deck_name: Target sentence deck.
+        model_name: Target sentence note type/model.
+        front_field: Model field name for sentence front text.
+        back_field: Model field name for sentence back text.
+        tags: Tags to attach to created notes.
+        allow_duplicates: Whether duplicate notes are allowed.
+
+    Returns:
+        Tuple of `(success_count, failed_count)`.
+    """
     notes: list[dict] = []
     for row in rows:
         notes.append(
@@ -112,7 +153,18 @@ def add_sentence_rows_to_anki(
 
 
 def add_notes(*, notes: list[dict], url: str) -> tuple[int, int]:
-    """Create destination decks and submit note payloads through AnkiConnect."""
+    """Create destination decks and submit note payloads through AnkiConnect.
+
+    Args:
+        notes: Raw Anki note payload objects.
+        url: AnkiConnect endpoint URL.
+
+    Returns:
+        Tuple of `(success_count, failed_count)`.
+
+    Raises:
+        RuntimeError: If `addNotes` returns a non-list result.
+    """
     if not notes:
         return 0, 0
 

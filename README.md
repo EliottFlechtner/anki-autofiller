@@ -154,6 +154,7 @@ GitHub Actions now builds and publishes a container image to GHCR on:
 - tags like `v1.0.0`, `v1.1.0`, etc.
 
 Release notes are tracked in `CHANGELOG.md`.
+Release quality requirements and documentation conventions are tracked in `RELEASE_STANDARDS.md`.
 
 Workflow file:
 

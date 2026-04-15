@@ -16,7 +16,11 @@ from .pipeline import build_rows
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse CLI arguments, merging defaults from preset/env-file settings."""
+    """Parse CLI arguments, merging defaults from preset/env-file settings.
+
+    Returns:
+        Parsed CLI namespace with effective argument values.
+    """
     bootstrap = argparse.ArgumentParser(add_help=False)
     bootstrap.add_argument(
         "--preset",
@@ -176,7 +180,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Run the end-to-end CLI flow: load words, generate rows, write/export."""
+    """Run the end-to-end CLI flow.
+
+    Raises:
+        ValueError: If no input words are found or required Anki args are blank.
+    """
     args = parse_args()
 
     input_path = Path(args.input)

@@ -20,14 +20,22 @@ FLASK_ENTRYPOINT = ROOT / "web_app.py"
 
 
 def find_free_port() -> int:
-    """Ask the OS for a currently free localhost TCP port."""
+    """Ask the OS for a currently free localhost TCP port.
+
+    Returns:
+        Free TCP port number on loopback interface.
+    """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         return sock.getsockname()[1]
 
 
 def terminate_process(process: subprocess.Popen[str] | None) -> None:
-    """Stop a process gracefully first, then force-kill after timeout."""
+    """Stop a process gracefully first, then force-kill after timeout.
+
+    Args:
+        process: Subprocess handle to terminate.
+    """
     if process is None or process.poll() is not None:
         return
     process.terminate()
@@ -38,7 +46,16 @@ def terminate_process(process: subprocess.Popen[str] | None) -> None:
 
 
 def wait_for_port(host: str, port: int, timeout_seconds: float = 10.0) -> bool:
-    """Poll a host/port until it accepts TCP connections or times out."""
+    """Poll a host/port until it accepts TCP connections or times out.
+
+    Args:
+        host: Hostname or IP to probe.
+        port: TCP port to probe.
+        timeout_seconds: Maximum wait time before failing.
+
+    Returns:
+        True when the port becomes reachable, else False.
+    """
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -53,7 +70,11 @@ def wait_for_port(host: str, port: int, timeout_seconds: float = 10.0) -> bool:
 
 
 def main() -> int:
-    """Start frontend and backend dev servers and forward exit status."""
+    """Start frontend and backend dev servers and forward exit status.
+
+    Returns:
+        Process exit code for shell usage.
+    """
     frontend_port = find_free_port()
     frontend_url = f"http://127.0.0.1:{frontend_port}"
 

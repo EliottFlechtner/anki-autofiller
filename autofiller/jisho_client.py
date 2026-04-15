@@ -19,7 +19,14 @@ class JishoClient:
     """Minimal client for Jisho dictionary search and example extraction."""
 
     def _request(self, url: str) -> str:
-        """Perform a GET request and return decoded response body text."""
+        """Perform a GET request and return decoded response body text.
+
+        Args:
+            url: HTTP URL to request.
+
+        Returns:
+            Response body decoded as UTF-8 with replacement for invalid bytes.
+        """
         req = urllib.request.Request(
             url,
             headers={
@@ -32,7 +39,15 @@ class JishoClient:
             return response.read().decode("utf-8", errors="replace")
 
     def _extract_candidates(self, payload: str, limit: int) -> list[SearchCandidate]:
-        """Extract reading/meaning candidates from the Jisho API JSON payload."""
+        """Extract reading/meaning candidates from the Jisho API JSON payload.
+
+        Args:
+            payload: Raw JSON text returned by the Jisho API.
+            limit: Maximum number of candidate entries to parse.
+
+        Returns:
+            Candidate list with normalized reading/meaning pairs.
+        """
         try:
             data = json.loads(payload)
         except json.JSONDecodeError:
@@ -61,7 +76,14 @@ class JishoClient:
         return candidates
 
     def _strip_tags(self, value: str) -> str:
-        """Convert a small HTML fragment to normalized plain text."""
+        """Convert a small HTML fragment to normalized plain text.
+
+        Args:
+            value: HTML fragment text.
+
+        Returns:
+            Plain text with entities unescaped and whitespace collapsed.
+        """
         text = re.sub(r"<[^>]+>", "", value)
         text = html.unescape(text)
         text = re.sub(r"\s+", " ", text)
@@ -70,7 +92,15 @@ class JishoClient:
     def _extract_sentences(
         self, html_payload: str, limit: int
     ) -> list[ExampleSentence]:
-        """Extract deduplicated Japanese/English sentence pairs from search HTML."""
+        """Extract deduplicated Japanese/English sentence pairs from search HTML.
+
+        Args:
+            html_payload: HTML page content from a Jisho search result.
+            limit: Maximum sentence pairs to return.
+
+        Returns:
+            Sentence pairs preserving source ordering up to `limit`.
+        """
         if limit <= 0:
             return []
 
@@ -105,7 +135,16 @@ class JishoClient:
     def search(
         self, word: str, candidate_limit: int, sentence_limit: int
     ) -> tuple[list[SearchCandidate], list[ExampleSentence]]:
-        """Search Jisho API/HTML endpoints for candidates and example sentences."""
+        """Search Jisho API/HTML endpoints for candidates and example sentences.
+
+        Args:
+            word: Source vocabulary term.
+            candidate_limit: Max number of API candidates to keep.
+            sentence_limit: Max number of example sentences to keep.
+
+        Returns:
+            Tuple of `(candidates, sentences)`.
+        """
         query = urllib.parse.quote(word)
         api_url = JISHO_API.format(query=query)
         html_url = f"https://jisho.org/search/{query}"

@@ -12,7 +12,14 @@ from .pitch_accent import enrich_html_with_pitch
 
 
 def format_sentences(sentences: list[ExampleSentence]) -> str:
-    """Format sentence pairs into the HTML snippet expected by the meaning field."""
+    """Format sentence pairs into the HTML snippet expected by the meaning field.
+
+    Args:
+        sentences: Example sentence pairs to render.
+
+    Returns:
+        HTML string using `<br>` separators, or an empty string when no sentences exist.
+    """
     if not sentences:
         return ""
     parts = [f"例文: {s.japanese} - {s.english}" for s in sentences]
@@ -22,7 +29,15 @@ def format_sentences(sentences: list[ExampleSentence]) -> str:
 def default_interactive_selector(
     word: str, candidates: list[SearchCandidate]
 ) -> SearchCandidate:
-    """Prompt on stdin/stdout to let users choose the best dictionary candidate."""
+    """Prompt on stdin/stdout to let users choose the best dictionary candidate.
+
+    Args:
+        word: Source word being reviewed.
+        candidates: Candidate options retrieved from Jisho.
+
+    Returns:
+        Selected candidate, or an empty candidate when `0` is chosen.
+    """
     print(f"\nReview: {word}")
     for idx, candidate in enumerate(candidates, start=1):
         print(f"  {idx}. reading='{candidate.reading}' meaning='{candidate.meaning}'")
@@ -52,7 +67,21 @@ def _build_word_result(
     interactive_review: bool,
     selector: Callable[[str, list[SearchCandidate]], SearchCandidate],
 ) -> tuple[CardRow, list[SentenceCardRow], str, str]:
-    """Build the generated row(s) for a single source word."""
+    """Build generated row payloads for a single source word.
+
+    Args:
+        word: Source vocabulary word.
+        candidate_limit: Max dictionary candidates to consider.
+        sentence_count: Max example sentences to include.
+        include_sentences: Whether to append sentences into meaning text.
+        separate_sentence_cards: Whether to emit sentence rows separately.
+        include_pitch_accent: Whether to enrich reading with pitch SVG.
+        interactive_review: Whether candidate selection is interactive.
+        selector: Candidate selection callback used in interactive mode.
+
+    Returns:
+        Tuple of `(card_row, sentence_rows, rendered_reading, selected_meaning)`.
+    """
     client = JishoClient()
     candidates, sentences = client.search(
         word,
@@ -114,7 +143,24 @@ def build_rows(
     selector: Callable[[str, list[SearchCandidate]], SearchCandidate] | None = None,
     progress_printer: Callable[[str], None] | None = print,
 ) -> tuple[list[CardRow], list[SentenceCardRow]]:
-    """Build card rows for all words, optionally in parallel with progress reporting."""
+    """Build card rows for all words.
+
+    Args:
+        words: Source words to process.
+        pause_seconds: Sleep duration between words in sequential mode.
+        candidate_limit: Max candidates fetched per word.
+        sentence_count: Max example sentences fetched per word.
+        include_sentences: Whether to append sentences into meaning field.
+        separate_sentence_cards: Whether to emit sentence rows as separate notes.
+        include_pitch_accent: Whether to append pitch accent SVG snippets.
+        max_workers: Max worker threads for parallel mode.
+        interactive_review: Whether to enable interactive candidate review.
+        selector: Optional candidate selector override.
+        progress_printer: Optional callback receiving progress log lines.
+
+    Returns:
+        Tuple of `(rows, sentence_rows)` preserving input word order.
+    """
     rows: list[CardRow] = [
         CardRow(word="", meaning="", reading="") for _ in range(len(words))
     ]

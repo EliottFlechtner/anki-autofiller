@@ -19,7 +19,11 @@ except ModuleNotFoundError as exc:
 
 
 def _base_settings() -> dict[str, object]:
-    """Return a deterministic baseline settings payload for web form tests."""
+    """Return a deterministic baseline settings payload for web form tests.
+
+    Returns:
+        Minimal settings mapping used as defaults in checkbox behavior tests.
+    """
     return {
         "output_path": "anki_import.tsv",
         "include_header": True,

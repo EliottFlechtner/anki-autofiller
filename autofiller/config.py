@@ -69,12 +69,27 @@ ENV_TO_KEY = {
 
 
 def _parse_bool(raw: str) -> bool:
-    """Parse a permissive truthy/falsy string into a boolean."""
+    """Parse a permissive truthy/falsy string into a boolean.
+
+    Args:
+        raw: Raw string value from env/config input.
+
+    Returns:
+        True when `raw` matches supported truthy tokens, else False.
+    """
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _coerce_value(key: str, raw: str) -> Any:
-    """Coerce a raw string value to the target setting type for `key`."""
+    """Coerce a raw string value to the target setting type for `key`.
+
+    Args:
+        key: Canonical setting key in `DEFAULT_SETTINGS`.
+        raw: Raw value read from environment or env-style file.
+
+    Returns:
+        Value converted to bool, int, float, or left as string.
+    """
     if key in {
         "include_header",
         "interactive_review",
@@ -93,7 +108,14 @@ def _coerce_value(key: str, raw: str) -> Any:
 
 
 def _load_env_file(path: Path) -> dict[str, str]:
-    """Load `KEY=VALUE` pairs from an env-style file if it exists."""
+    """Load `KEY=VALUE` pairs from an env-style file if it exists.
+
+    Args:
+        path: Filesystem path to an env-style file.
+
+    Returns:
+        Mapping of keys to raw string values parsed from the file.
+    """
     values: dict[str, str] = {}
     if not path.exists():
         return values
@@ -112,7 +134,17 @@ def _load_env_file(path: Path) -> dict[str, str]:
 
 
 def _resolve_preset_file(preset_name: str | None) -> Path | None:
-    """Resolve a preset name to `presets/<name>.env`, validating input."""
+    """Resolve a preset name to `presets/<name>.env`, validating input.
+
+    Args:
+        preset_name: Requested preset name from user input.
+
+    Returns:
+        Path to the preset file, or None when no preset was provided.
+
+    Raises:
+        ValueError: If the preset name includes path separators or traversal hints.
+    """
     if not preset_name:
         return None
     cleaned = preset_name.strip()
@@ -126,7 +158,11 @@ def _resolve_preset_file(preset_name: str | None) -> Path | None:
 
 
 def available_presets() -> list[str]:
-    """Return available preset names from the `presets/` directory."""
+    """Return available preset names from the `presets/` directory.
+
+    Returns:
+        Sorted list of preset base names (without `.env` extension).
+    """
     preset_dir = Path("presets")
     if not preset_dir.exists():
         return []
@@ -141,6 +177,13 @@ def load_settings(
     env_file: str | None = None,
 ) -> dict[str, Any]:
     """Load merged settings from defaults, files, and environment variables.
+
+    Args:
+        preset_name: Optional built-in preset name from `presets/<name>.env`.
+        env_file: Optional explicit env file path.
+
+    Returns:
+        Fully merged settings dictionary ready for CLI/web usage.
 
     Precedence from lowest to highest:
     defaults -> .env -> .env.local -> preset -> explicit env file -> process env.
