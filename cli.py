@@ -4,133 +4,169 @@ import argparse
 from pathlib import Path
 
 from anki_connect_client import add_rows_to_anki, add_sentence_rows_to_anki
+from config import (
+    DEFAULT_DECK_NAME,
+    DEFAULT_MODEL_NAME,
+    load_settings,
+)
 from io_utils import read_words_from_file, write_tsv
 from pipeline import build_rows
 
-DEFAULT_DECK_NAME = "Keio::TestApp"
-DEFAULT_MODEL_NAME = "Japanese (Basic & Reversed)"
-
 
 def parse_args() -> argparse.Namespace:
+    bootstrap = argparse.ArgumentParser(add_help=False)
+    bootstrap.add_argument(
+        "--preset",
+        default=None,
+        help="Preset name from presets/<name>.env.",
+    )
+    bootstrap.add_argument(
+        "--env-file",
+        default=None,
+        help="Path to env-style config file with ANKI_AUTOFILLER_* values.",
+    )
+    pre_args, _ = bootstrap.parse_known_args()
+    defaults = load_settings(preset_name=pre_args.preset, env_file=pre_args.env_file)
+
     parser = argparse.ArgumentParser(
-        description="Create an Anki TSV file from Japanese words."
+        description="Create an Anki TSV file from Japanese words.",
+        parents=[bootstrap],
     )
     parser.add_argument(
         "--input",
-        required=True,
+        default=defaults["input"],
         help="Path to text file with one Japanese word per line.",
     )
     parser.add_argument(
         "--output",
-        default="anki_import.tsv",
+        default=defaults["output_path"],
         help="Output TSV path (default: anki_import.tsv).",
     )
-    parser.add_argument(
-        "--include-header",
-        action="store_true",
-        help="Write a header row: Word, Meaning, Reading.",
-    )
+    parser.add_argument("--include-header", dest="include_header", action="store_true")
+    parser.add_argument("--no-header", dest="include_header", action="store_false")
+    parser.set_defaults(include_header=bool(defaults["include_header"]))
     parser.add_argument(
         "--pause-seconds",
         type=float,
-        default=0.15,
-        help="Delay between requests to reduce API throttling (default: 0.15).",
+        default=defaults["pause_seconds"],
+        help="Delay between requests to reduce API throttling.",
     )
     parser.add_argument(
-        "--interactive-review",
-        action="store_true",
-        help="Prompt to select from multiple reading/meaning candidates per word.",
+        "--max-workers",
+        type=int,
+        default=defaults["max_workers"],
+        help="Parallel workers for lookups (used when interactive mode is off and pause is 0).",
     )
+    parser.add_argument(
+        "--interactive-review", dest="interactive_review", action="store_true"
+    )
+    parser.add_argument(
+        "--no-interactive-review", dest="interactive_review", action="store_false"
+    )
+    parser.set_defaults(interactive_review=bool(defaults["interactive_review"]))
     parser.add_argument(
         "--candidate-limit",
         type=int,
-        default=3,
-        help="Maximum number of Jisho candidates to show/use (default: 3).",
+        default=defaults["candidate_limit"],
+        help="Maximum number of Jisho candidates to show/use.",
     )
     parser.add_argument(
         "--sentence-count",
         type=int,
-        default=2,
-        help="How many Jisho example sentences to append to Meaning (default: 2).",
+        default=defaults["sentence_count"],
+        help="How many Jisho example sentences to append to Meaning.",
     )
     parser.add_argument(
-        "--separate-sentence-cards",
-        action="store_true",
-        help="Create sentence examples as separate notes instead of appending to Meaning.",
+        "--separate-sentence-cards", dest="separate_sentence_cards", action="store_true"
     )
     parser.add_argument(
-        "--no-sentences",
-        action="store_true",
-        help="Disable appending example sentences into the Meaning field.",
+        "--no-separate-sentence-cards",
+        dest="separate_sentence_cards",
+        action="store_false",
+    )
+    parser.set_defaults(
+        separate_sentence_cards=bool(defaults["separate_sentence_cards"])
+    )
+
+    parser.add_argument(
+        "--include-sentences", dest="include_sentences", action="store_true"
     )
     parser.add_argument(
-        "--no-pitch-accent",
-        action="store_true",
-        help="Disable automatic pitch accent SVG generation.",
+        "--no-sentences", dest="include_sentences", action="store_false"
+    )
+    parser.set_defaults(include_sentences=bool(defaults["include_sentences"]))
+
+    parser.add_argument(
+        "--pitch-accent", dest="include_pitch_accent", action="store_true"
     )
     parser.add_argument(
-        "--anki-connect",
-        action="store_true",
-        help="Also add notes directly to Anki via AnkiConnect.",
+        "--no-pitch-accent", dest="include_pitch_accent", action="store_false"
     )
+    parser.set_defaults(include_pitch_accent=bool(defaults["include_pitch_accent"]))
+
+    parser.add_argument("--anki-connect", dest="anki_connect", action="store_true")
+    parser.add_argument("--no-anki-connect", dest="anki_connect", action="store_false")
+    parser.set_defaults(anki_connect=bool(defaults["anki_connect"]))
     parser.add_argument(
         "--anki-url",
-        default="http://127.0.0.1:8765",
-        help="AnkiConnect endpoint (default: http://127.0.0.1:8765).",
+        default=defaults["anki_url"],
+        help="AnkiConnect endpoint.",
     )
     parser.add_argument(
         "--deck-name",
-        default=DEFAULT_DECK_NAME,
+        default=defaults["deck_name"],
         help=f"Deck name for AnkiConnect mode (default: {DEFAULT_DECK_NAME}).",
     )
     parser.add_argument(
         "--model-name",
-        default=DEFAULT_MODEL_NAME,
+        default=defaults["model_name"],
         help=f"Note type/model name for AnkiConnect mode (default: {DEFAULT_MODEL_NAME}).",
     )
     parser.add_argument(
         "--field-word",
-        default="Expression",
+        default=defaults["field_word"],
         help="Expression field name in your Anki note type (default: Expression).",
     )
     parser.add_argument(
         "--field-meaning",
-        default="Meaning",
+        default=defaults["field_meaning"],
         help="Meaning field name in your Anki note type (default: Meaning).",
     )
     parser.add_argument(
         "--field-reading",
-        default="Reading",
+        default=defaults["field_reading"],
         help="Reading field name in your Anki note type (default: Reading).",
     )
     parser.add_argument(
         "--tags",
-        default="",
+        default=defaults["tags"],
         help="Comma-separated tags to apply in AnkiConnect mode.",
     )
     parser.add_argument(
-        "--allow-duplicates",
-        action="store_true",
-        help="Allow duplicate notes when adding via AnkiConnect.",
+        "--allow-duplicates", dest="allow_duplicates", action="store_true"
     )
     parser.add_argument(
+        "--disallow-duplicates", dest="allow_duplicates", action="store_false"
+    )
+    parser.set_defaults(allow_duplicates=bool(defaults["allow_duplicates"]))
+    parser.add_argument(
         "--sentence-deck-name",
-        default=f"{DEFAULT_DECK_NAME}::Examples",
+        default=defaults["sentence_deck_name"],
         help="Deck for separate sentence cards (default: Keio::TestApp::Examples).",
     )
     parser.add_argument(
         "--sentence-model-name",
-        default="Basic",
+        default=defaults["sentence_model_name"],
         help="Model for separate sentence cards (default: Basic).",
     )
     parser.add_argument(
         "--sentence-front-field",
-        default="Front",
+        default=defaults["sentence_front_field"],
         help="Front field for separate sentence cards (default: Front).",
     )
     parser.add_argument(
         "--sentence-back-field",
-        default="Back",
+        default=defaults["sentence_back_field"],
         help="Back field for separate sentence cards (default: Back).",
     )
     return parser.parse_args()
@@ -151,9 +187,10 @@ def main() -> None:
         pause_seconds=args.pause_seconds,
         candidate_limit=args.candidate_limit,
         sentence_count=args.sentence_count,
-        include_sentences=not args.no_sentences,
+        include_sentences=args.include_sentences,
         separate_sentence_cards=args.separate_sentence_cards,
-        include_pitch_accent=not args.no_pitch_accent,
+        include_pitch_accent=args.include_pitch_accent,
+        max_workers=max(1, args.max_workers),
         interactive_review=args.interactive_review,
     )
 

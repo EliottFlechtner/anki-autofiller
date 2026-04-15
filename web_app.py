@@ -1,45 +1,85 @@
 from __future__ import annotations
 
+import re
+import threading
+import uuid
 from pathlib import Path
+from typing import Any, Mapping
 
-from flask import Flask, render_template, request
+from flask import Flask, jsonify, render_template, request
 
 from anki_connect_client import add_rows_to_anki, add_sentence_rows_to_anki
+from config import (
+    available_presets,
+    load_settings,
+)
 from io_utils import normalize_words, write_tsv
 from pipeline import build_rows
 
 app = Flask(__name__)
-DEFAULT_DECK_NAME = "Keio::TestApp"
-DEFAULT_MODEL_NAME = "Japanese (Basic & Reversed)"
-DEFAULT_EXPRESSION_FIELD = "Expression"
-DEFAULT_SENTENCE_DECK_NAME = f"{DEFAULT_DECK_NAME}::Examples"
+PROGRESS_RE = re.compile(r"^\[(\d+)/(\d+)\]")
+
+JOBS: dict[str, dict[str, Any]] = {}
+JOB_LOCK = threading.Lock()
 
 
 def _bool_from_form(value: str | None) -> bool:
     return value == "on"
 
 
-@app.get("/")
-def index() -> str:
-    return render_template("index.html")
+def _job_update(job_id: str, **updates: Any) -> None:
+    with JOB_LOCK:
+        if job_id in JOBS:
+            JOBS[job_id].update(updates)
 
 
-@app.post("/generate")
-def generate() -> str:
-    words_block = request.form.get("words", "")
+def _serialize_rows_preview(rows: list[Any], limit: int = 60) -> list[dict[str, str]]:
+    return [
+        {"word": row.word, "meaning": row.meaning, "reading": row.reading}
+        for row in rows[:limit]
+    ]
+
+
+def _value_from_form(form_data: Mapping[str, str], key: str, default: str) -> str:
+    raw = form_data.get(key)
+    if raw is None:
+        return default
+    stripped = raw.strip()
+    return stripped if stripped else default
+
+
+def _build_from_form(
+    form_data: Mapping[str, str],
+    progress_printer,
+) -> dict[str, Any]:
+    preset_name = _value_from_form(form_data, "preset", "")
+    env_file = _value_from_form(form_data, "env_file", "")
+    settings = load_settings(
+        preset_name=preset_name or None,
+        env_file=env_file or None,
+    )
+
+    words_block = form_data.get("words", "")
     words = normalize_words(words_block.splitlines())
 
     if not words:
-        return render_template("index.html", error="Please enter at least one word.")
+        raise ValueError("Please enter at least one word.")
 
-    pause_seconds = float(request.form.get("pause_seconds", "0.0") or "0.0")
-    candidate_limit = int(request.form.get("candidate_limit", "3") or "3")
-    sentence_count = int(request.form.get("sentence_count", "2") or "2")
-    include_sentences = _bool_from_form(request.form.get("include_sentences"))
-    include_pitch_accent = _bool_from_form(request.form.get("include_pitch_accent"))
-    separate_sentence_cards = _bool_from_form(
-        request.form.get("separate_sentence_cards")
+    pause_seconds = float(
+        _value_from_form(form_data, "pause_seconds", str(settings["pause_seconds"]))
     )
+    candidate_limit = int(
+        _value_from_form(form_data, "candidate_limit", str(settings["candidate_limit"]))
+    )
+    sentence_count = int(
+        _value_from_form(form_data, "sentence_count", str(settings["sentence_count"]))
+    )
+    max_workers = int(
+        _value_from_form(form_data, "max_workers", str(settings["max_workers"]))
+    )
+    include_sentences = _bool_from_form(form_data.get("include_sentences"))
+    include_pitch_accent = _bool_from_form(form_data.get("include_pitch_accent"))
+    separate_sentence_cards = _bool_from_form(form_data.get("separate_sentence_cards"))
 
     rows, sentence_rows = build_rows(
         words=words,
@@ -49,62 +89,63 @@ def generate() -> str:
         include_sentences=include_sentences,
         separate_sentence_cards=separate_sentence_cards,
         include_pitch_accent=include_pitch_accent,
+        max_workers=max(1, max_workers),
         interactive_review=False,
-        progress_printer=None,
+        progress_printer=progress_printer,
     )
 
-    output_path_raw = (
-        request.form.get("output_path", "anki_import.tsv").strip() or "anki_import.tsv"
+    output_path_raw = _value_from_form(
+        form_data,
+        "output_path",
+        str(settings["output_path"]),
     )
     output_path = Path(output_path_raw)
-    include_header = _bool_from_form(request.form.get("include_header"))
+    include_header = _bool_from_form(form_data.get("include_header"))
     write_tsv(rows=rows, output_path=output_path, include_header=include_header)
 
     anki_summary = ""
-    if _bool_from_form(request.form.get("anki_connect")):
-        anki_url = request.form.get("anki_url", "http://127.0.0.1:8765").strip()
-        deck_name = (
-            request.form.get("deck_name", DEFAULT_DECK_NAME).strip()
-            or DEFAULT_DECK_NAME
+    if _bool_from_form(form_data.get("anki_connect")):
+        anki_url = _value_from_form(form_data, "anki_url", str(settings["anki_url"]))
+        deck_name = _value_from_form(form_data, "deck_name", str(settings["deck_name"]))
+        model_name = _value_from_form(
+            form_data, "model_name", str(settings["model_name"])
         )
-        model_name = (
-            request.form.get("model_name", DEFAULT_MODEL_NAME).strip()
-            or DEFAULT_MODEL_NAME
+        field_word = _value_from_form(
+            form_data, "field_word", str(settings["field_word"])
         )
-        field_word = (
-            request.form.get("field_word", DEFAULT_EXPRESSION_FIELD).strip()
-            or DEFAULT_EXPRESSION_FIELD
+        field_meaning = _value_from_form(
+            form_data,
+            "field_meaning",
+            str(settings["field_meaning"]),
         )
-        field_meaning = (
-            request.form.get("field_meaning", "Meaning").strip() or "Meaning"
+        field_reading = _value_from_form(
+            form_data,
+            "field_reading",
+            str(settings["field_reading"]),
         )
-        field_reading = (
-            request.form.get("field_reading", "Reading").strip() or "Reading"
-        )
-        allow_duplicates = _bool_from_form(request.form.get("allow_duplicates"))
-        tags_raw = request.form.get("tags", "")
+        allow_duplicates = _bool_from_form(form_data.get("allow_duplicates"))
+        tags_raw = _value_from_form(form_data, "tags", str(settings["tags"]))
         tags = [tag.strip() for tag in tags_raw.split(",") if tag.strip()]
-        sentence_deck_name = (
-            request.form.get("sentence_deck_name", DEFAULT_SENTENCE_DECK_NAME).strip()
-            or DEFAULT_SENTENCE_DECK_NAME
+        sentence_deck_name = _value_from_form(
+            form_data,
+            "sentence_deck_name",
+            str(settings["sentence_deck_name"]),
         )
-        sentence_model_name = (
-            request.form.get("sentence_model_name", "Basic").strip() or "Basic"
+        sentence_model_name = _value_from_form(
+            form_data,
+            "sentence_model_name",
+            str(settings["sentence_model_name"]),
         )
-        sentence_front_field = (
-            request.form.get("sentence_front_field", "Front").strip() or "Front"
+        sentence_front_field = _value_from_form(
+            form_data,
+            "sentence_front_field",
+            str(settings["sentence_front_field"]),
         )
-        sentence_back_field = (
-            request.form.get("sentence_back_field", "Back").strip() or "Back"
+        sentence_back_field = _value_from_form(
+            form_data,
+            "sentence_back_field",
+            str(settings["sentence_back_field"]),
         )
-
-        if not deck_name or not model_name:
-            return render_template(
-                "index.html",
-                error="For AnkiConnect mode, deck name and model name are required.",
-                preview=rows,
-                output_path=str(output_path),
-            )
 
         success, failed = add_rows_to_anki(
             rows,
@@ -137,12 +178,110 @@ def generate() -> str:
                 f"deck={sentence_deck_name}"
             )
 
+    return {
+        "rows": rows,
+        "output_path": str(output_path),
+        "message": f"Generated {len(rows)} rows.",
+        "anki_summary": anki_summary,
+    }
+
+
+def _run_job(job_id: str, form_data: dict[str, str]) -> None:
+    with JOB_LOCK:
+        JOBS[job_id] = {
+            "status": "running",
+            "completed": 0,
+            "total": len(normalize_words(form_data.get("words", "").splitlines())),
+            "log": [],
+            "message": "",
+            "anki_summary": "",
+            "preview": [],
+            "output_path": "",
+            "error": "",
+        }
+
+    def progress_cb(line: str) -> None:
+        completed = None
+        total = None
+        m = PROGRESS_RE.match(line)
+        if m:
+            completed = int(m.group(1))
+            total = int(m.group(2))
+
+        with JOB_LOCK:
+            job = JOBS.get(job_id)
+            if not job:
+                return
+            if completed is not None:
+                job["completed"] = completed
+            if total is not None:
+                job["total"] = total
+            logs = job.get("log", [])
+            logs.append(line)
+            job["log"] = logs[-40:]
+
+    try:
+        result = _build_from_form(form_data, progress_cb)
+        _job_update(
+            job_id,
+            status="done",
+            completed=result["rows"] and len(result["rows"]) or 0,
+            message=result["message"],
+            anki_summary=result["anki_summary"],
+            output_path=result["output_path"],
+            preview=_serialize_rows_preview(result["rows"]),
+        )
+    except Exception as exc:  # noqa: BLE001
+        _job_update(job_id, status="error", error=str(exc))
+
+
+@app.get("/")
+def index() -> str:
     return render_template(
         "index.html",
-        preview=rows,
-        output_path=str(output_path),
-        message=f"Generated {len(rows)} rows.",
-        anki_summary=anki_summary,
+        defaults=load_settings(),
+        presets=available_presets(),
+    )
+
+
+@app.post("/api/start")
+def api_start() -> Any:
+    job_id = uuid.uuid4().hex
+    form_data = request.form.to_dict(flat=True)
+    thread = threading.Thread(target=_run_job, args=(job_id, form_data), daemon=True)
+    thread.start()
+    return jsonify({"job_id": job_id})
+
+
+@app.get("/api/status/<job_id>")
+def api_status(job_id: str) -> Any:
+    with JOB_LOCK:
+        job = JOBS.get(job_id)
+    if not job:
+        return jsonify({"error": "job not found"}), 404
+    return jsonify(job)
+
+
+@app.post("/generate")
+def generate() -> str:
+    try:
+        result = _build_from_form(request.form.to_dict(flat=True), print)
+    except Exception as exc:  # noqa: BLE001
+        return render_template(
+            "index.html",
+            error=str(exc),
+            defaults=load_settings(),
+            presets=available_presets(),
+        )
+
+    return render_template(
+        "index.html",
+        preview=result["rows"],
+        output_path=result["output_path"],
+        message=result["message"],
+        anki_summary=result["anki_summary"],
+        defaults=load_settings(),
+        presets=available_presets(),
     )
 
 

@@ -27,6 +27,35 @@ It can also:
 python3 -m pip install -r requirements.txt
 ```
 
+## Config Files And Presets
+
+This project supports env-style config files with `ANKI_AUTOFILLER_*` keys.
+
+1. Copy `.env.example` to `.env` and edit values.
+2. Optional: create additional env files and pass them with `--env-file`.
+3. Optional: use built-in presets from `presets/*.env` with `--preset`.
+
+CLI config precedence is:
+
+1. CLI flags
+2. environment variables
+3. `--env-file` values
+4. `--preset` values
+5. `.env.local`
+6. `.env`
+7. hardcoded defaults
+
+Built-in presets:
+
+- `slang2026`
+- `fast-import`
+
+Example:
+
+```bash
+python3 anki_autofiller.py --preset slang2026 --env-file configs/my-run.env --anki-connect
+```
+
 ## Quick Start (Web UI)
 
 ```bash
@@ -41,6 +70,8 @@ The web page can:
 - optionally push notes directly to Anki through AnkiConnect
 - use the existing Japanese note type by default
 - keep pitch accent generation on by default
+- show live generation progress (status, completed count, logs)
+- speed up non-interactive generation with configurable worker count
 
 ## Quick Start (CLI)
 
@@ -58,6 +89,12 @@ Generate TSV:
 python3 anki_autofiller.py --input words.txt --output anki_import.tsv --include-header
 ```
 
+Using config defaults from `.env` or a preset:
+
+```bash
+python3 anki_autofiller.py --preset fast-import --anki-connect
+```
+
 Interactive candidate review (CLI only):
 
 ```bash
@@ -71,6 +108,7 @@ To keep answers short, use `--separate-sentence-cards` so sentence examples are 
 ## AnkiConnect Setup (What To Do)
 
 AnkiConnect talks to the desktop Anki app locally, so you do not need to provide a mail/password in an `.env` file for this workflow.
+- load a preset from `presets/*.env` and optional custom env file path
 
 1. Open Anki.
 2. Go to `Tools -> Add-ons -> Get Add-ons...`.
@@ -103,6 +141,8 @@ python3 anki_autofiller.py \
 ```
 
 The web UI defaults the deck to `Keio::TestApp` and the model to `Japanese (Basic & Reversed)`.
+
+For a complete end-to-end example that creates and fills a new deck named `Slang 2026`, see `EXAMPLE.md`.
 
 ## Pitch Accent Add-On
 
