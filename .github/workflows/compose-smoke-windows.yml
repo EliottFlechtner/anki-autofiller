@@ -1,0 +1,69 @@
+name: compose-smoke-windows
+
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke-windows:
+    runs-on: [self-hosted, Windows, X64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify required tools
+        shell: pwsh
+        run: |
+          docker --version
+          docker compose version
+          python --version
+          bash --version
+          make --version
+
+      - name: Prepare env
+        shell: pwsh
+        run: |
+          Copy-Item -Path config/.env.docker.example -Destination .env.docker -Force
+
+      - name: Bring stack up via Make
+        shell: bash
+        run: |
+          make up
+
+      - name: Wait for container and health
+        shell: pwsh
+        run: |
+          docker compose -f config/docker-compose.yml -f config/docker-compose.windows.yml --env-file .env.docker ps
+          for ($i = 1; $i -le 30; $i++) {
+            try {
+              $r = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:5000/healthz" -TimeoutSec 3
+              if ($r.StatusCode -eq 200) {
+                Write-Host "Health check passed on attempt $i"
+                break
+              }
+            } catch {
+              Start-Sleep -Seconds 2
+            }
+            if ($i -eq 30) {
+              throw "Health endpoint did not become ready in time"
+            }
+          }
+
+      - name: Verify bootstrap endpoint
+        shell: pwsh
+        run: |
+          $r = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:5000/api/bootstrap" -TimeoutSec 5
+          if ($r.StatusCode -ne 200) { throw "Bootstrap endpoint failed" }
+
+      - name: Show status and logs on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          docker compose -f config/docker-compose.yml -f config/docker-compose.windows.yml --env-file .env.docker ps
+          docker compose -f config/docker-compose.yml -f config/docker-compose.windows.yml --env-file .env.docker logs --tail=200
+
+      - name: Tear down
+        if: always()
+        shell: pwsh
+        run: |
+          docker compose -f config/docker-compose.yml -f config/docker-compose.windows.yml --env-file .env.docker down
