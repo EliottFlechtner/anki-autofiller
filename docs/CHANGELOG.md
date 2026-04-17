@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.3] - 2026-04-17
+
+### Added
+- **Interactive review-before-Anki flow** in the web UI:
+  - Per-word candidate selection with step-through review controls.
+  - Related-word recommendations from Jisho with in-review “Add To Batch”.
+  - Backend endpoint to append related words into active review jobs (`/api/review-add-word/<job_id>`).
+- **Review candidate API support**:
+  - Endpoint for single-word candidate fetch (`/api/search-candidates`).
+  - Endpoint to rebuild review candidates for pending jobs (`/api/review-items/<job_id>`).
+- **Expanded regression coverage**:
+  - New API tests for add-word append behavior, duplicate rejection, and per-row choice mapping.
+  - Additional tests for pitch accent SVG rendering and review candidate extraction behavior.
+
+### Changed
+- **Candidate ranking/extraction logic** now prioritizes exact-match Jisho entries for review options.
+- Compound/related Jisho entries are separated into a **Related words** suggestion section.
+- Anki submission summary messages were simplified to a cleaner, user-friendly format.
+- Generated preview rendering now supports inline pitch SVG display in the web UI.
+
+### Fixed
+- Fixed review add-to-batch persistence so newly added words are included in final confirm-to-Anki submission.
+- Fixed row-to-choice mapping bug where multiple added words could reuse the same meaning/reading during confirmation.
+- Fixed review queue UX to append background-added words without forcing immediate navigation to the new item.
+- Fixed generated preview list/count updates after adding related words to the batch.
+- Removed noisy progress/log panel output from the status area.
+
 ## [1.0.2] - 2026-04-16
 
 ### Added
