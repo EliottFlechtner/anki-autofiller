@@ -16,20 +16,21 @@ class PitchAccentSvgTests(unittest.TestCase):
 
         self.assertIn('class="pitch"', svg)
         self.assertIn('style="color:#f5f5f5;"', svg)
-        self.assertIn("fill:currentColor", svg)
-        self.assertIn("stroke:currentColor", svg)
+        self.assertIn("fill:#f5f5f5", svg)
+        self.assertIn("stroke:#f5f5f5", svg)
 
     def test_render_pitch_svg_uses_hollow_trailing_points(self) -> None:
         """Pattern points beyond mora count should render as hollow circles."""
         svg = render_pitch_svg("あ", "LHH")
 
-        self.assertIn("fill:none;stroke:currentColor", svg)
+        self.assertIn("fill:none;stroke:#f5f5f5", svg)
 
     def test_render_pitch_svg_light_theme(self) -> None:
         """Light theme should use dark foreground for white backgrounds."""
         svg = render_pitch_svg("あめ", "LH", theme="light")
 
         self.assertIn('style="color:#111111;"', svg)
+        self.assertIn("fill:#111111", svg)
 
 
 if __name__ == "__main__":

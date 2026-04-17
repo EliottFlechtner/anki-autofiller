@@ -68,6 +68,7 @@ export default function App() {
   const [statusText, setStatusText] = useState('Bootstrapping settings...');
   const [progress, setProgress] = useState({status: 'idle', completed: 0, total: 0, log: []});
   const [result, setResult] = useState({message: '', summary: ''});
+  const [previewRows, setPreviewRows] = useState([]);
   const [jobId, setJobId] = useState('');
   const [loadingPreset, setLoadingPreset] = useState(false);
 
@@ -122,12 +123,14 @@ export default function App() {
 
         if (data.status === 'done') {
           setResult({message: data.message || '', summary: data.anki_summary || ''});
+          setPreviewRows(data.preview || []);
           setStatusText('Generation complete.');
           setJobId('');
         }
 
         if (data.status === 'error') {
           setResult({message: `Error: ${data.error || 'unknown error'}`, summary: ''});
+          setPreviewRows([]);
           setStatusText('Generation failed.');
           setJobId('');
         }
@@ -191,6 +194,7 @@ export default function App() {
     }
 
     setResult({message: '', summary: ''});
+    setPreviewRows([]);
     setProgress({status: 'starting', completed: 0, total: 0, log: []});
     setStatusText('Starting generation...');
 
@@ -228,6 +232,21 @@ export default function App() {
           <pre className="log-box">{(progress.log || []).join('\n')}</pre>
           {result.message ? <p className="result-line">{result.message}</p> : null}
           {result.summary ? <p className="result-line">{result.summary}</p> : null}
+
+          {previewRows.length > 0 ? (
+            <details className="advanced-block" open={formState.review_before_anki}>
+              <summary>Generated card preview ({previewRows.length} shown)</summary>
+              <div className="log-box" style={{maxHeight: '280px', overflow: 'auto'}}>
+                {previewRows.map((row, index) => (
+                  <div key={`${row.word}-${index}`} style={{marginBottom: '0.7rem'}}>
+                    <strong>{index + 1}. {row.word}</strong><br />
+                    Reading: {row.reading}<br />
+                    Meaning: {row.meaning}
+                  </div>
+                ))}
+              </div>
+            </details>
+          ) : null}
         </section>
 
         <form onSubmit={startGeneration} className="stack">

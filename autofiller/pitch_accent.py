@@ -275,13 +275,14 @@ def _morae(word: str) -> list[str]:
     return morae
 
 
-def _draw_circle(x: int, y: int, hollow: bool) -> str:
+def _draw_circle(x: int, y: int, hollow: bool, color: str) -> str:
     """Render one pitch point circle, optionally hollow for trailing pattern points.
 
     Args:
         x: Circle x-coordinate.
         y: Circle y-coordinate.
         hollow: Whether to draw an inner white circle.
+        color: Foreground color for marker strokes/fills.
 
     Returns:
         SVG snippet for a circle marker.
@@ -289,17 +290,18 @@ def _draw_circle(x: int, y: int, hollow: bool) -> str:
     if hollow:
         return (
             f'<circle r="5" cx="{x}" cy="{y}" '
-            'style="opacity:1;fill:none;stroke:currentColor;stroke-width:1.5;" />'
+            f'style="opacity:1;fill:none;stroke:{color};stroke-width:1.5;" />'
         )
-    return f'<circle r="5" cx="{x}" cy="{y}" ' 'style="opacity:1;fill:currentColor;" />'
+    return f'<circle r="5" cx="{x}" cy="{y}" ' f'style="opacity:1;fill:{color};" />'
 
 
-def _draw_text(x: int, mora: str) -> str:
+def _draw_text(x: int, mora: str, color: str) -> str:
     """Render mora text label, compacting two-char morae with reduced second glyph.
 
     Args:
         x: Base x-coordinate for label placement.
         mora: Mora text to draw.
+        color: Foreground color used for text glyphs.
 
     Returns:
         SVG text snippet.
@@ -307,20 +309,20 @@ def _draw_text(x: int, mora: str) -> str:
     if len(mora) == 1:
         return (
             f'<text x="{x}" y="67.5" '
-            'style="font-size:20px;font-family:sans-serif;fill:currentColor;">'
+            f'style="font-size:20px;font-family:sans-serif;fill:{color};">'
             f"{mora}</text>"
         )
     return (
         f'<text x="{x - 5}" y="67.5" '
-        'style="font-size:20px;font-family:sans-serif;fill:currentColor;">'
+        f'style="font-size:20px;font-family:sans-serif;fill:{color};">'
         f"{mora[0]}</text>"
         f'<text x="{x + 12}" y="67.5" '
-        'style="font-size:14px;font-family:sans-serif;fill:currentColor;">'
+        f'style="font-size:14px;font-family:sans-serif;fill:{color};">'
         f"{mora[1]}</text>"
     )
 
 
-def _draw_path(x: int, y: int, step_width: int, direction: str) -> str:
+def _draw_path(x: int, y: int, step_width: int, direction: str, color: str) -> str:
     """Render the connecting line segment between adjacent pitch points.
 
     Args:
@@ -328,6 +330,7 @@ def _draw_path(x: int, y: int, step_width: int, direction: str) -> str:
         y: Starting y-coordinate.
         step_width: Horizontal spacing between pitch points.
         direction: Segment direction code (`s`, `u`, or `d`).
+        color: Foreground color used for the stroke.
 
     Returns:
         SVG path snippet.
@@ -340,7 +343,7 @@ def _draw_path(x: int, y: int, step_width: int, direction: str) -> str:
         delta = f"{step_width},25"
     return (
         f'<path d="m {x},{y} {delta}" '
-        'style="fill:none;stroke:currentColor;stroke-width:1.5;" />'
+        f'style="fill:none;stroke:{color};stroke-width:1.5;" />'
     )
 
 
@@ -368,19 +371,19 @@ def render_pitch_svg(word: str, pattern: str, *, theme: str = "dark") -> str:
 
     svg_parts = [
         f'<svg class="pitch" width="{width}px" height="75px" viewBox="0 0 {width} 75" '
-        f'style="color:{color};">'
+        f'style="color:{color};" data-theme="{theme}">'
     ]
 
     for index, mora in enumerate(morae):
         x = margin_lr + (index * step_width)
         # Shift labels slightly left so circles align near mora centers visually.
-        svg_parts.append(_draw_text(x - 11, mora))
+        svg_parts.append(_draw_text(x - 11, mora, color))
 
     previous: tuple[int, int] | None = None
     for index, accent in enumerate(pattern):
         x = margin_lr + (index * step_width)
         y = 5 if accent in {"H", "h", "1", "2"} else 30
-        svg_parts.append(_draw_circle(x, y, index >= len(morae)))
+        svg_parts.append(_draw_circle(x, y, index >= len(morae), color))
         if previous is not None:
             prev_x, prev_y = previous
             if prev_y == y:
@@ -389,7 +392,7 @@ def render_pitch_svg(word: str, pattern: str, *, theme: str = "dark") -> str:
                 direction = "d"
             else:
                 direction = "u"
-            svg_parts.append(_draw_path(prev_x, prev_y, step_width, direction))
+            svg_parts.append(_draw_path(prev_x, prev_y, step_width, direction, color))
         previous = (x, y)
 
     svg_parts.append("</svg>")
