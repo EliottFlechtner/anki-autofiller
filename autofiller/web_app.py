@@ -7,9 +7,6 @@ import re
 import threading
 import uuid
 import copy
-import base64
-import hashlib
-import hmac
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -25,7 +22,7 @@ from .jisho_client import JishoClient
 from .models import CardRow, SearchCandidate, SentenceCardRow
 from .pipeline import build_rows
 from .pitch_accent import enrich_html_with_pitch
-from .line_inbox import (
+from .inbox_store import (
     add_inbox_items,
     ensure_inbox_db,
     list_pending_inbox_items,
@@ -60,7 +57,6 @@ DEFAULT_FLASK_PORT = int(_runtime_env("FLASK_PORT", os.environ.get("PORT", "5000
 
 JOBS: dict[str, dict[str, Any]] = {}
 JOB_LOCK = threading.Lock()
-LINE_CHANNEL_SECRET = _runtime_env("LINE_CHANNEL_SECRET", "")
 
 
 def _parse_inbox_item_ids(raw: str | None) -> list[int]:
@@ -729,7 +725,7 @@ def healthz() -> Any:
 
 @app.get("/api/inbox/pending")
 def api_inbox_pending() -> Any:
-    """Return pending LINE inbox rows for import/review in web UI."""
+    """Return pending inbox rows for import/review in web UI."""
     limit_raw = request.args.get("limit", "200")
     try:
         limit = int(limit_raw)
@@ -742,7 +738,7 @@ def api_inbox_pending() -> Any:
 
 @app.post("/api/inbox/add")
 def api_inbox_add() -> Any:
-    """Manually add one or more inbox rows (useful for non-LINE capture/testing)."""
+    """Manually add one or more inbox rows (useful for capture/testing)."""
     body = request.get_json(silent=True) or {}
     raw_text = str(body.get("text", ""))
     source = str(body.get("source", "manual"))
@@ -769,72 +765,6 @@ def api_inbox_mark_ankied() -> Any:
 
     changed = mark_inbox_items_ankied(ids)
     return jsonify({"changed": changed, "count": pending_inbox_count()})
-
-
-@app.post("/api/line/webhook")
-def api_line_webhook() -> Any:
-    """Receive LINE webhook events and persist text messages into inbox."""
-    raw_body = request.get_data(cache=True)
-    signature = request.headers.get("X-Line-Signature", "")
-
-    if LINE_CHANNEL_SECRET:
-        digest = hmac.new(
-            LINE_CHANNEL_SECRET.encode("utf-8"),
-            raw_body,
-            hashlib.sha256,
-        ).digest()
-        expected = base64.b64encode(digest).decode("utf-8")
-        if not hmac.compare_digest(signature, expected):
-            return jsonify({"error": "invalid signature"}), 403
-
-    payload = request.get_json(silent=True) or {}
-    events = payload.get("events", []) if isinstance(payload, dict) else []
-    if not isinstance(events, list):
-        return jsonify({"inserted": 0, "events": 0})
-
-    inserted_count = 0
-    for event in events:
-        if not isinstance(event, dict):
-            continue
-        if event.get("type") != "message":
-            continue
-        message = event.get("message", {})
-        if not isinstance(message, dict) or message.get("type") != "text":
-            continue
-
-        text = str(message.get("text", "")).strip()
-        if not text:
-            continue
-
-        source_info = (
-            event.get("source", {}) if isinstance(event.get("source"), dict) else {}
-        )
-        source_type = str(source_info.get("type", "line"))
-        source_id = str(
-            source_info.get("userId")
-            or source_info.get("groupId")
-            or source_info.get("roomId")
-            or ""
-        )
-        source_label = (
-            f"line:{source_type}:{source_id}" if source_id else f"line:{source_type}"
-        )
-
-        received_at_ms = None
-        try:
-            received_at_ms = int(event.get("timestamp"))
-        except (TypeError, ValueError):
-            received_at_ms = None
-
-        pieces = [segment.strip() for segment in text.splitlines() if segment.strip()]
-        inserted = add_inbox_items(
-            pieces,
-            source=source_label,
-            received_at_ms=received_at_ms,
-        )
-        inserted_count += len(inserted)
-
-    return jsonify({"inserted": inserted_count, "events": len(events)})
 
 
 @app.post("/api/start")
@@ -1046,11 +976,7 @@ def api_review_items(job_id: str) -> Any:
 
 @app.post("/api/review-add-word/<job_id>")
 def api_review_add_word(job_id: str) -> Any:
-    """Append one related word to an in-progress review job.
-
-    This updates both in-memory review items and the pending add payload so
-    confirm-to-Anki includes the newly added word.
-    """
+    """Add one more reviewed word to a pending batch."""
     with JOB_LOCK:
         job = JOBS.get(job_id)
         if not job:
@@ -1063,49 +989,79 @@ def api_review_add_word(job_id: str) -> Any:
         if not isinstance(pending_add, dict):
             return jsonify({"error": "no pending add payload"}), 400
 
-    request_body = request.get_json(silent=True) or {}
-    word = str(request_body.get("word", "")).strip()
+    body = request.get_json(silent=True) or {}
+    word = str(body.get("word", "")).strip()
     if not word:
         return jsonify({"error": "word is required"}), 400
 
     try:
         source_words_raw = pending_add.get("source_words", [])
         source_words = (
-            [str(item).strip() for item in source_words_raw if str(item).strip()]
+            [str(item) for item in source_words_raw]
             if isinstance(source_words_raw, list)
             else []
         )
         if word in source_words:
-            return jsonify({"error": "word already in batch"}), 409
+            return jsonify({"error": f"{word} is already in batch"}), 409
 
+        candidate_limit = int(pending_add.get("candidate_limit", 1))
+        include_pitch_accent = bool(pending_add.get("include_pitch_accent", False))
+        pitch_accent_theme = str(pending_add.get("pitch_accent_theme", "dark"))
         review_items = _build_review_items(
             words=[word],
-            candidate_limit=max(int(pending_add.get("candidate_limit", 1)), 1),
-            include_pitch_accent=bool(pending_add.get("include_pitch_accent", False)),
-            pitch_accent_theme=str(pending_add.get("pitch_accent_theme", "dark")),
+            candidate_limit=max(candidate_limit, 1),
+            include_pitch_accent=include_pitch_accent,
+            pitch_accent_theme=pitch_accent_theme,
             generated_rows=[],
         )
-        if not review_items:
-            return jsonify({"error": "no candidates found"}), 404
+        if review_items:
+            review_item = review_items[0]
+            selected_index = (
+                int(review_item.get("selected_index", 0))
+                if isinstance(review_item, dict)
+                else 0
+            )
+        else:
+            review_item = {
+                "word": word,
+                "source_word": word,
+                "options": [
+                    {
+                        "meaning": "",
+                        "reading": "",
+                        "reading_preview": "",
+                    }
+                ],
+                "related_words": [],
+                "selected_index": 0,
+            }
+            selected_index = 0
 
-        review_item = review_items[0]
         options = (
             review_item.get("options", []) if isinstance(review_item, dict) else []
         )
-        selected_index = 0
-        selected_option = options[0] if isinstance(options, list) and options else {}
-
-        rows_payload = pending_add.get("rows", [])
-        if not isinstance(rows_payload, list):
-            rows_payload = []
-        rows_payload.append(
+        selected_option = (
+            options[selected_index] if isinstance(options, list) and options else {}
+        )
+        pending_rows = pending_add.get("rows", [])
+        if not isinstance(pending_rows, list):
+            pending_rows = []
+        pending_rows.append(
             {
-                "word": str(review_item.get("word", word)),
+                "word": (
+                    str(review_item.get("word", word))
+                    if isinstance(review_item, dict)
+                    else word
+                ),
                 "meaning": str(selected_option.get("meaning", "")),
-                "reading": str(selected_option.get("reading_preview", "")),
+                "reading": str(
+                    selected_option.get(
+                        "reading_preview", selected_option.get("reading", "")
+                    )
+                ),
             }
         )
-        pending_add["rows"] = rows_payload
+        pending_add["rows"] = pending_rows
 
         pending_review_items = pending_add.get("review_items", [])
         if not isinstance(pending_review_items, list):
@@ -1117,7 +1073,6 @@ def api_review_add_word(job_id: str) -> Any:
         pending_add["source_words"] = source_words
 
         current_review_items = updated_review_items
-
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": str(exc)}), 500
 
