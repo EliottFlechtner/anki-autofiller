@@ -95,6 +95,7 @@ export default function App() {
   const [previewSentenceRows, setPreviewSentenceRows] = useState([]);
   const [reviewItems, setReviewItems] = useState([]);
   const [reviewChoices, setReviewChoices] = useState([]);
+  const [reviewIndex, setReviewIndex] = useState(0);
   const [confirmationJobId, setConfirmationJobId] = useState('');
   const [confirmingAdd, setConfirmingAdd] = useState(false);
   const [jobId, setJobId] = useState('');
@@ -160,6 +161,7 @@ export default function App() {
           setPreviewSentenceRows(data.sentence_preview || []);
           setReviewItems(data.review_items || []);
           setReviewChoices((data.review_items || []).map((item) => item.selected_index || 0));
+          setReviewIndex(0);
           setConfirmationJobId(data.requires_confirmation ? jobId : '');
           setStatusText('Generation complete.');
           setJobId('');
@@ -171,6 +173,7 @@ export default function App() {
           setPreviewSentenceRows([]);
           setReviewItems([]);
           setReviewChoices([]);
+          setReviewIndex(0);
           setConfirmationJobId('');
           setStatusText('Generation failed.');
           setJobId('');
@@ -239,6 +242,7 @@ export default function App() {
     setPreviewSentenceRows([]);
     setReviewItems([]);
     setReviewChoices([]);
+    setReviewIndex(0);
     setConfirmationJobId('');
     setProgress({status: 'starting', completed: 0, total: 0, log: []});
     setStatusText('Starting generation...');
@@ -277,6 +281,7 @@ export default function App() {
       setConfirmationJobId('');
       setReviewItems([]);
       setReviewChoices([]);
+      setReviewIndex(0);
       setStatusText('Reviewed notes were added to Anki.');
     } catch (error) {
       setStatusText(`Could not confirm add: ${error}`);
@@ -335,6 +340,43 @@ export default function App() {
     return item.options[selectedIndex];
   }
 
+  function currentReviewItem() {
+    return reviewItems[reviewIndex] || null;
+  }
+
+  function currentReviewChoice() {
+    const item = currentReviewItem();
+    if (!item || !item.options || item.options.length === 0) {
+      return 0;
+    }
+    const selectedIndex = Number.isInteger(reviewChoices[reviewIndex])
+      ? reviewChoices[reviewIndex]
+      : (item.selected_index || 0);
+    if (selectedIndex < 0 || selectedIndex >= item.options.length) {
+      return 0;
+    }
+    return selectedIndex;
+  }
+
+  function setCurrentReviewChoice(selectedIndex) {
+    updateReviewChoice(reviewIndex, selectedIndex);
+  }
+
+  function goToReviewIndex(nextIndex) {
+    const clamped = Math.max(0, Math.min(reviewItems.length - 1, nextIndex));
+    setReviewIndex(clamped);
+  }
+
+  function renderReadingPreview(option) {
+    if (!option) {
+      return null;
+    }
+    if (option.reading_preview && option.reading_preview.includes('<svg')) {
+      return <div className="pitch-preview" dangerouslySetInnerHTML={{__html: option.reading_preview}} />;
+    }
+    return <div className="reading-preview-text">{option.reading_preview || option.reading}</div>;
+  }
+
   if (!bootLoaded) {
     return <div className="shell"><div className="status">Loading app...</div></div>;
   }
@@ -359,38 +401,99 @@ export default function App() {
               {result.message ? <p className="result-line">{result.message}</p> : null}
               {result.summary ? <p className="result-line">{result.summary}</p> : null}
 
-              {previewRows.length > 0 ? (
+              {confirmationJobId && reviewItems.length > 0 ? (
+                <section className="review-panel">
+                  <div className="review-panel-head">
+                    <div>
+                      <div className="review-kicker">Review before add</div>
+                      <h3>Choose the right definition for each word</h3>
+                      <p className="hint">Pick the candidate you want for this note, then confirm to send the reviewed rows to Anki.</p>
+                    </div>
+                    <div className="review-progress">
+                      {reviewIndex + 1} / {reviewItems.length}
+                    </div>
+                  </div>
+
+                  <div className="review-nav">
+                    <button type="button" className="ghost" onClick={() => goToReviewIndex(reviewIndex - 1)} disabled={reviewIndex === 0}>
+                      Previous
+                    </button>
+                    <button type="button" className="ghost" onClick={() => goToReviewIndex(reviewIndex + 1)} disabled={reviewIndex >= reviewItems.length - 1}>
+                      Next
+                    </button>
+                  </div>
+
+                  {currentReviewItem() ? (
+                    <article className="review-card">
+                      <div className="review-card-top">
+                        <div>
+                          <div className="review-word-label">Word</div>
+                          <div className="review-word" dangerouslySetInnerHTML={{__html: currentReviewItem().word}} />
+                          <div className="review-source">Source: {currentReviewItem().source_word}</div>
+                        </div>
+                        <div className="review-choice-count">
+                          {currentReviewChoice() + 1} of {currentReviewItem().options.length}
+                        </div>
+                      </div>
+
+                      <div className="review-options">
+                        {currentReviewItem().options.map((option, optionIndex) => {
+                          const isSelected = optionIndex === currentReviewChoice();
+                          return (
+                            <button
+                              key={`${reviewIndex}-${optionIndex}`}
+                              type="button"
+                              className={`review-option ${isSelected ? 'selected' : ''}`}
+                              onClick={() => setCurrentReviewChoice(optionIndex)}
+                            >
+                              <div className="review-option-head">
+                                <span className="review-option-badge">{optionIndex + 1}</span>
+                                <span className="review-option-meaning">{option.meaning || '(blank meaning)'}</span>
+                              </div>
+                              <div className="review-option-reading">{option.reading || '(no reading)'}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="review-preview-block">
+                        <div className="review-preview-label">Reading preview</div>
+                        {renderReadingPreview(currentReviewItem().options[currentReviewChoice()])}
+                      </div>
+
+                      <div className="review-details">
+                        <div><strong>Selected meaning:</strong> {currentReviewItem().options[currentReviewChoice()]?.meaning || '(blank meaning)'}</div>
+                        <div><strong>Selected reading:</strong> {currentReviewItem().options[currentReviewChoice()]?.reading || '(no reading)'}</div>
+                      </div>
+                    </article>
+                  ) : null}
+
+                  <div className="review-nav review-nav-bottom">
+                    <button type="button" className="ghost" onClick={() => goToReviewIndex(reviewIndex - 1)} disabled={reviewIndex === 0}>
+                      Previous
+                    </button>
+                    <button type="button" className="ghost" onClick={() => goToReviewIndex(reviewIndex + 1)} disabled={reviewIndex >= reviewItems.length - 1}>
+                      Next
+                    </button>
+                    <button className="submit" type="button" onClick={confirmAddToAnki} disabled={confirmingAdd}>
+                      {confirmingAdd ? 'Confirming...' : 'Confirm and Add Reviewed Notes to Anki'}
+                    </button>
+                  </div>
+                </section>
+              ) : null}
+
+              {previewRows.length > 0 && !confirmationJobId ? (
                 <details className="advanced-block" open={formState.review_before_anki}>
                   <summary>Generated card preview ({previewRows.length} rows)</summary>
                   <div className="log-box" style={{maxHeight: '420px', overflow: 'auto'}}>
                     {previewRows.map((row, index) => (
                       <div key={`${row.word}-${index}`} style={{marginBottom: '1rem', paddingBottom: '0.8rem', borderBottom: '1px solid #e2e8e2'}}>
                         <strong>{index + 1}. <span dangerouslySetInnerHTML={{__html: row.word}} /></strong><br />
-                        {reviewItems[index]?.options?.length > 0 ? (
-                          <label style={{marginTop: '0.4rem'}}>
-                            Definition choice
-                            <select
-                              value={reviewChoices[index] ?? reviewItems[index].selected_index ?? 0}
-                              onChange={(e) => updateReviewChoice(index, Number(e.target.value))}
-                            >
-                              {reviewItems[index].options.map((option, optionIndex) => (
-                                <option key={`${index}-${optionIndex}`} value={optionIndex}>
-                                  {option.meaning || '(blank meaning)'}{option.reading ? ` | ${option.reading}` : ''}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        ) : null}
                         <div style={{marginTop: '0.35rem'}}>
-                          <strong>Reading:</strong>{' '}
-                          {selectedOptionForRow(index)?.reading_preview?.includes('<svg') ? (
-                            <span dangerouslySetInnerHTML={{__html: selectedOptionForRow(index)?.reading_preview || ''}} />
-                          ) : (
-                            selectedOptionForRow(index)?.reading_preview || row.reading
-                          )}
+                          <strong>Reading:</strong> {row.reading}
                         </div>
                         <div style={{marginTop: '0.2rem'}}>
-                          <strong>Meaning:</strong> {selectedOptionForRow(index)?.meaning || row.meaning}
+                          <strong>Meaning:</strong> {row.meaning}
                         </div>
                       </div>
                     ))}
@@ -412,11 +515,6 @@ export default function App() {
                 </details>
               ) : null}
 
-              {confirmationJobId ? (
-                <button className="submit" type="button" onClick={confirmAddToAnki} disabled={confirmingAdd}>
-                  {confirmingAdd ? 'Confirming...' : 'Confirm and Add Reviewed Notes to Anki'}
-                </button>
-              ) : null}
             </section>
           </section>
 
