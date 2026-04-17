@@ -114,6 +114,7 @@ export default function App() {
   const [ankiDecks, setAnkiDecks] = useState([]);
   const [loadingAnkiOptions, setLoadingAnkiOptions] = useState(false);
   const [inboxItems, setInboxItems] = useState([]);
+  const [showInboxOverlay, setShowInboxOverlay] = useState(false);
   const [loadingInbox, setLoadingInbox] = useState(false);
   const [captureText, setCaptureText] = useState('');
   const [captureSource, setCaptureSource] = useState('phone');
@@ -399,13 +400,26 @@ export default function App() {
       if (!resp.ok) {
         throw new Error(payload.error || 'failed to fetch inbox');
       }
-      setInboxItems(Array.isArray(payload.items) ? payload.items : []);
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      setInboxItems(items);
+      return items;
     } catch (error) {
       setStatusText(`Could not load inbox: ${error}`);
       setInboxItems([]);
+      return [];
     } finally {
       setLoadingInbox(false);
     }
+  }
+
+  async function handleInboxBellClick() {
+    const hadItemsBeforeRefresh = inboxItems.length > 0;
+    const items = await fetchInboxPending();
+    if (!Array.isArray(items) || items.length === 0) {
+      setShowInboxOverlay(false);
+      return;
+    }
+    setShowInboxOverlay((prev) => (hadItemsBeforeRefresh ? !prev : true));
   }
 
   function importPendingInboxToWords() {
@@ -414,6 +428,14 @@ export default function App() {
       return;
     }
 
+    const itemsToImport = [...inboxItems];
+    const incomingWords = itemsToImport
+      .map((item) => String(item.text || '').trim())
+      .filter(Boolean);
+    const incomingIds = itemsToImport
+      .map((item) => Number.parseInt(String(item.id), 10))
+      .filter((value) => Number.isInteger(value) && value > 0);
+
     setFormState((prev) => {
       const currentWords = String(prev.words || '')
         .split('\n')
@@ -421,9 +443,6 @@ export default function App() {
         .filter(Boolean);
       const existingSet = new Set(currentWords);
 
-      const incomingWords = inboxItems
-        .map((item) => String(item.text || '').trim())
-        .filter(Boolean);
       const uniqueIncoming = incomingWords.filter((word) => !existingSet.has(word));
       const mergedWords = [...currentWords, ...uniqueIncoming];
 
@@ -432,9 +451,6 @@ export default function App() {
         .map((part) => part.trim())
         .filter(Boolean)
         .map((part) => Number.parseInt(part, 10))
-        .filter((value) => Number.isInteger(value) && value > 0);
-      const incomingIds = inboxItems
-        .map((item) => Number.parseInt(String(item.id), 10))
         .filter((value) => Number.isInteger(value) && value > 0);
       const mergedIds = Array.from(new Set([...existingIds, ...incomingIds]));
 
@@ -445,6 +461,10 @@ export default function App() {
         inbox_item_ids: mergedIds.join(','),
       };
     });
+
+    // Clear imported rows from inbox UI immediately.
+    setInboxItems([]);
+    setShowInboxOverlay(false);
   }
 
   async function confirmAddToAnki() {
@@ -514,6 +534,12 @@ export default function App() {
   useEffect(() => {
     fetchInboxPending();
   }, []);
+
+  useEffect(() => {
+    if (inboxItems.length === 0) {
+      setShowInboxOverlay(false);
+    }
+  }, [inboxItems.length]);
 
   function updateReviewChoice(rowIndex, selectedIndex) {
     setReviewChoices((prev) => {
@@ -888,11 +914,28 @@ export default function App() {
 
             <div className="settings-grid">
               <div className="settings-subcolumn">
-                <section className="card">
-                  <h2>Input & Output</h2>
+                <section className="card input-output-card">
+                  <div className="card-title-row">
+                    <h2>Input & Output</h2>
+                    <button
+                      type="button"
+                      className={`inbox-bell ${inboxItems.length === 0 ? 'is-empty' : ''}`}
+                      aria-label={`Open inbox (${inboxItems.length} pending)`}
+                      onClick={handleInboxBellClick}
+                      disabled={loadingInbox}
+                    >
+                      <span className="inbox-bell-icon" aria-hidden="true">🔔</span>
+                      {inboxItems.length > 0 ? <span className="inbox-bell-count">{inboxItems.length}</span> : null}
+                    </button>
+                  </div>
                   <div className="grid two">
                     <label className="full">Words (one per line)
-                      <textarea value={formState.words} onChange={(e) => updateField('words', e.target.value)} placeholder={'食べる\n勉強\n試合'} />
+                      <textarea
+                        className="words-textarea"
+                        value={formState.words}
+                        onChange={(e) => updateField('words', e.target.value)}
+                        placeholder={'食べる\n勉強\n試合'}
+                      />
                     </label>
 
                     <label className="toggle full">
@@ -911,20 +954,20 @@ export default function App() {
                     Include header row in TSV
                   </label>
 
-                  <div className="inbox-block">
-                    <div className="inbox-head">
-                      <strong>Inbox</strong>
-                      <span className="hint">{inboxItems.length} pending</span>
-                    </div>
-                    <div className="inbox-actions">
-                      <button type="button" className="ghost" onClick={fetchInboxPending} disabled={loadingInbox}>
-                        {loadingInbox ? 'Refreshing...' : 'Refresh Inbox'}
-                      </button>
-                      <button type="button" className="ghost" onClick={importPendingInboxToWords} disabled={inboxItems.length === 0}>
-                        Import All Pending
-                      </button>
-                    </div>
-                    {inboxItems.length > 0 ? (
+                  {showInboxOverlay && inboxItems.length > 0 ? (
+                    <div className="inbox-overlay" role="dialog" aria-label="Pending inbox items">
+                      <div className="inbox-head">
+                        <strong>Inbox</strong>
+                        <span className="hint">{inboxItems.length} pending</span>
+                      </div>
+                      <div className="inbox-actions">
+                        <button type="button" className="ghost" onClick={fetchInboxPending} disabled={loadingInbox}>
+                          {loadingInbox ? 'Refreshing...' : 'Refresh Inbox'}
+                        </button>
+                        <button type="button" className="ghost" onClick={importPendingInboxToWords} disabled={inboxItems.length === 0}>
+                          Import All Pending
+                        </button>
+                      </div>
                       <div className="inbox-list">
                         {inboxItems.slice(0, 12).map((item) => (
                           <div key={item.id} className="inbox-item">
@@ -934,10 +977,8 @@ export default function App() {
                         ))}
                         {inboxItems.length > 12 ? <p className="hint">Showing first 12 items.</p> : null}
                       </div>
-                    ) : (
-                      <p className="hint">No pending inbox items.</p>
-                    )}
-                  </div>
+                    </div>
+                  ) : null}
                 </section>
 
                 <section className="card">
@@ -959,12 +1000,17 @@ export default function App() {
 
                   <div className="inline-options">
                     {formState.include_pitch_accent ? (
-                      <label>Pitch SVG line/dot/text color
-                        <select value={formState.pitch_accent_theme} onChange={(e) => updateField('pitch_accent_theme', e.target.value)}>
-                          <option value="dark">Light lines (for dark backgrounds)</option>
-                          <option value="light">Dark lines (for light backgrounds)</option>
+                      <div className="pitch-theme-row">
+                        <span className="pitch-theme-label">Pitch SVG line/dot/text color</span>
+                        <select
+                          className="pitch-theme-select"
+                          value={formState.pitch_accent_theme}
+                          onChange={(e) => updateField('pitch_accent_theme', e.target.value)}
+                        >
+                          <option value="dark">light</option>
+                          <option value="light">dark</option>
                         </select>
-                      </label>
+                      </div>
                     ) : null}
                     {formState.include_furigana ? (
                       <label>Furigana format

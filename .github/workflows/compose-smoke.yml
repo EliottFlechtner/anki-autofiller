@@ -22,7 +22,10 @@ jobs:
           echo "" && echo "=== Env Example ===" && cat config/.env.docker.example | head -5
 
       - name: Prepare env
-        run: cp config/.env.docker.example .env.docker
+        run: |
+          cp config/.env.docker.example .env.docker
+          echo "UID=$(id -u)" >> .env.docker
+          echo "GID=$(id -g)" >> .env.docker
 
       - name: Bring stack up
         run: |
