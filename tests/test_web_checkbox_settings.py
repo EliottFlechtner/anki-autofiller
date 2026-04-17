@@ -224,8 +224,8 @@ class CheckboxBehaviorTests(unittest.TestCase):
         add_sentence_kwargs = add_sentence_rows_mock.call_args.kwargs
         self.assertFalse(add_sentence_kwargs["allow_duplicates"])
 
-        self.assertIn("Added to Anki: success=1, failed=0", result["anki_summary"])
-        self.assertIn("Sentence cards: success=1, failed=0", result["anki_summary"])
+        self.assertIn("Added 1 card to Anki", result["anki_summary"])
+        self.assertIn("added 1 sentence card", result["anki_summary"])
 
     def test_review_before_anki_skips_submission(self) -> None:
         """Review mode should keep preview generation but skip AnkiConnect writes."""
