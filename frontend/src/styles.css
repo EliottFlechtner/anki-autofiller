@@ -89,7 +89,7 @@ h3 {
 .main-columns {
   display: grid;
   gap: 0.95rem;
-  grid-template-columns: minmax(290px, 0.9fr) minmax(0, 1.7fr);
+  grid-template-columns: minmax(340px, 1.05fr) minmax(0, 1.55fr);
   align-items: start;
 }
 
@@ -105,7 +105,7 @@ h3 {
 .settings-grid {
   display: grid;
   gap: 0.8rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
   align-items: start;
 }
 
@@ -627,7 +627,7 @@ textarea {
 
 .words-textarea {
   min-height: 250px;
-  font-size: 1rem;
+  font-size: 1.06rem;
 }
 
 .toggle-list {
