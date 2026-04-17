@@ -185,17 +185,17 @@ export default function App() {
           apikey: SUPABASE_ANON_KEY,
           Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
-          Prefer: 'return=representation',
+          Prefer: 'return=minimal',
         },
         body: JSON.stringify(payload),
       });
 
-      const body = await resp.json().catch(() => ({}));
       if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
         throw new Error(body.message || body.error || `HTTP ${resp.status}`);
       }
 
-      setCaptureStatus(`Saved ${Array.isArray(body) ? body.length : lines.length} item(s).`);
+      setCaptureStatus(`Saved ${lines.length} item(s).`);
       setCaptureText('');
     } catch (error) {
       setCaptureStatus(`Save failed: ${error}`);
