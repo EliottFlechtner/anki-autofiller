@@ -25,6 +25,12 @@ class PitchAccentSvgTests(unittest.TestCase):
 
         self.assertIn("fill:none;stroke:currentColor", svg)
 
+    def test_render_pitch_svg_light_theme(self) -> None:
+        """Light theme should use dark foreground for white backgrounds."""
+        svg = render_pitch_svg("あめ", "LH", theme="light")
+
+        self.assertIn('style="color:#111111;"', svg)
+
 
 if __name__ == "__main__":
     unittest.main()

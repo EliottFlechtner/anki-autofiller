@@ -34,7 +34,11 @@ def _base_settings() -> dict[str, object]:
         "separate_sentence_cards": True,
         "include_sentences": True,
         "include_pitch_accent": False,
+        "pitch_accent_theme": "dark",
+        "include_furigana": False,
+        "furigana_format": "ruby",
         "anki_connect": True,
+        "review_before_anki": False,
         "anki_url": "http://127.0.0.1:8765",
         "deck_name": "Example",
         "model_name": "Jisho2Anki::Vocab (Kanji-Reading-Translation)",
@@ -222,6 +226,32 @@ class CheckboxBehaviorTests(unittest.TestCase):
 
         self.assertIn("Added to Anki: success=1, failed=0", result["anki_summary"])
         self.assertIn("Sentence cards: success=1, failed=0", result["anki_summary"])
+
+    def test_review_before_anki_skips_submission(self) -> None:
+        """Review mode should keep preview generation but skip AnkiConnect writes."""
+        settings = _base_settings()
+        form_data = {
+            "words": "試合",
+            "output_path": "output/test.tsv",
+            "anki_connect": "true",
+            "review_before_anki": "true",
+        }
+
+        rows = [CardRow(word="試合", meaning="match", reading="しあい")]
+
+        with (
+            patch(
+                "autofiller.web_app._resolved_settings_for_request",
+                return_value=settings,
+            ),
+            patch("autofiller.web_app.build_rows", return_value=(rows, [])),
+            patch("autofiller.web_app.write_tsv"),
+            patch("autofiller.web_app.add_rows_to_anki") as add_rows_mock,
+        ):
+            result = _build_from_form(form_data, progress_printer=lambda _line: None)
+
+        add_rows_mock.assert_not_called()
+        self.assertIn("Review mode enabled", result["anki_summary"])
 
 
 if __name__ == "__main__":

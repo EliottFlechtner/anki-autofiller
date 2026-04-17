@@ -68,6 +68,9 @@ class PipelineBehaviorTests(unittest.TestCase):
                 include_sentences=False,
                 separate_sentence_cards=False,
                 include_pitch_accent=True,
+                pitch_accent_theme="dark",
+                include_furigana=False,
+                furigana_format="ruby",
                 interactive_review=False,
                 selector=lambda _word, cands: cands[0],
             )
@@ -93,6 +96,9 @@ class PipelineBehaviorTests(unittest.TestCase):
                 include_sentences=False,
                 separate_sentence_cards=False,
                 include_pitch_accent=False,
+                pitch_accent_theme="dark",
+                include_furigana=False,
+                furigana_format="ruby",
                 interactive_review=False,
                 selector=lambda _word, cands: cands[0],
             )
@@ -116,6 +122,9 @@ class PipelineBehaviorTests(unittest.TestCase):
                 include_sentences=True,
                 separate_sentence_cards=True,
                 include_pitch_accent=False,
+                pitch_accent_theme="dark",
+                include_furigana=False,
+                furigana_format="ruby",
                 interactive_review=False,
                 selector=lambda _word, cands: cands[0],
             )
@@ -148,6 +157,9 @@ class PipelineBehaviorTests(unittest.TestCase):
                 include_sentences=False,
                 separate_sentence_cards=False,
                 include_pitch_accent=False,
+                pitch_accent_theme="dark",
+                include_furigana=False,
+                furigana_format="ruby",
                 max_workers=3,
                 interactive_review=False,
                 progress_printer=None,
@@ -185,6 +197,9 @@ class PipelineBehaviorTests(unittest.TestCase):
                 include_sentences=False,
                 separate_sentence_cards=False,
                 include_pitch_accent=False,
+                pitch_accent_theme="dark",
+                include_furigana=False,
+                furigana_format="ruby",
                 max_workers=1,
                 interactive_review=False,
                 progress_printer=logs.append,
@@ -214,6 +229,9 @@ class PipelineBehaviorTests(unittest.TestCase):
                 include_sentences=False,
                 separate_sentence_cards=False,
                 include_pitch_accent=False,
+                pitch_accent_theme="dark",
+                include_furigana=False,
+                furigana_format="ruby",
                 max_workers=4,
                 interactive_review=True,
                 selector=lambda _word, cands: cands[1],
@@ -223,6 +241,61 @@ class PipelineBehaviorTests(unittest.TestCase):
         self.assertEqual(rows[0].meaning, "second")
         self.assertEqual(rows[0].reading, "s")
         self.assertEqual(sentence_rows, [])
+
+    def test_build_word_result_applies_furigana_markup(self) -> None:
+        """Furigana mode should annotate the word field when reading is available."""
+        candidates = [SearchCandidate(meaning="eat", reading="たべる")]
+
+        with patch(
+            "autofiller.pipeline.JishoClient.search",
+            return_value=(candidates, []),
+        ):
+            row, _sentence_rows, _reading, _plain_meaning = _build_word_result(
+                word="食べる",
+                candidate_limit=3,
+                sentence_count=0,
+                include_sentences=False,
+                separate_sentence_cards=False,
+                include_pitch_accent=False,
+                pitch_accent_theme="dark",
+                include_furigana=True,
+                furigana_format="ruby",
+                interactive_review=False,
+                selector=lambda _word, cands: cands[0],
+            )
+
+        self.assertIn("<ruby>", row.word)
+        self.assertIn("<rt>た</rt>", row.word)
+
+    def test_build_word_result_passes_pitch_theme(self) -> None:
+        """Pitch rendering should forward the selected SVG theme option."""
+        candidates = [SearchCandidate(meaning="rain", reading="あめ")]
+
+        with (
+            patch(
+                "autofiller.pipeline.JishoClient.search",
+                return_value=(candidates, []),
+            ),
+            patch(
+                "autofiller.pipeline.enrich_html_with_pitch",
+                return_value=None,
+            ) as pitch_mock,
+        ):
+            _build_word_result(
+                word="雨",
+                candidate_limit=3,
+                sentence_count=0,
+                include_sentences=False,
+                separate_sentence_cards=False,
+                include_pitch_accent=True,
+                pitch_accent_theme="light",
+                include_furigana=False,
+                furigana_format="ruby",
+                interactive_review=False,
+                selector=lambda _word, cands: cands[0],
+            )
+
+        pitch_mock.assert_called_once_with("雨", "あめ", theme="light")
 
 
 if __name__ == "__main__":
