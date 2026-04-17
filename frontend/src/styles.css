@@ -352,12 +352,26 @@ h3 {
 .inbox-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 0.45rem;
   border: 1px solid #e2e8e2;
   background: #fff;
   border-radius: 8px;
   padding: 0.4rem 0.5rem;
+}
+
+.inbox-item-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  font-weight: 500;
+}
+
+.inbox-item-check input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 .inbox-item-text {

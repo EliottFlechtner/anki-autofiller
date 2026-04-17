@@ -114,6 +114,9 @@ export default function App() {
   const [ankiDecks, setAnkiDecks] = useState([]);
   const [loadingAnkiOptions, setLoadingAnkiOptions] = useState(false);
   const [inboxItems, setInboxItems] = useState([]);
+  const [selectedInboxIds, setSelectedInboxIds] = useState(new Set());
+  const [seenInboxIds, setSeenInboxIds] = useState(new Set());
+  const [importedInboxIds, setImportedInboxIds] = useState(new Set());
   const [showInboxOverlay, setShowInboxOverlay] = useState(false);
   const [loadingInbox, setLoadingInbox] = useState(false);
   const [captureText, setCaptureText] = useState('');
@@ -392,34 +395,69 @@ export default function App() {
     }
   }
 
-  async function fetchInboxPending() {
-    setLoadingInbox(true);
+  async function fetchInboxPending({silent = false} = {}) {
+    if (!silent) {
+      setLoadingInbox(true);
+    }
     try {
       const resp = await fetch('/api/inbox/pending');
       const payload = await resp.json();
       if (!resp.ok) {
         throw new Error(payload.error || 'failed to fetch inbox');
       }
-      const items = Array.isArray(payload.items) ? payload.items : [];
+      const rows = Array.isArray(payload.items) ? payload.items : [];
+      const items = rows.filter((item) => {
+        const id = Number.parseInt(String(item.id), 10);
+        return Number.isInteger(id) && id > 0 && !importedInboxIds.has(id);
+      });
       setInboxItems(items);
+      const visibleIds = items
+        .map((item) => Number.parseInt(String(item.id), 10))
+        .filter((id) => Number.isInteger(id) && id > 0);
+      setSelectedInboxIds((prev) => {
+        const next = new Set();
+        for (const id of visibleIds) {
+          if (prev.has(id) || !seenInboxIds.has(id)) {
+            next.add(id);
+          }
+        }
+        return next;
+      });
+      setSeenInboxIds((prev) => new Set([...prev, ...visibleIds]));
       return items;
     } catch (error) {
       setStatusText(`Could not load inbox: ${error}`);
       setInboxItems([]);
+      setSelectedInboxIds(new Set());
       return [];
     } finally {
-      setLoadingInbox(false);
+      if (!silent) {
+        setLoadingInbox(false);
+      }
     }
   }
 
   async function handleInboxBellClick() {
-    const hadItemsBeforeRefresh = inboxItems.length > 0;
-    const items = await fetchInboxPending();
-    if (!Array.isArray(items) || items.length === 0) {
-      setShowInboxOverlay(false);
-      return;
+    if (!showInboxOverlay) {
+      const items = await fetchInboxPending({silent: true});
+      if (!Array.isArray(items) || items.length === 0) {
+        setShowInboxOverlay(false);
+        return;
+      }
     }
-    setShowInboxOverlay((prev) => (hadItemsBeforeRefresh ? !prev : true));
+    setShowInboxOverlay((prev) => !prev);
+  }
+
+  function toggleInboxSelection(id) {
+    setSelectedInboxIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   }
 
   function importPendingInboxToWords() {
@@ -428,7 +466,14 @@ export default function App() {
       return;
     }
 
-    const itemsToImport = [...inboxItems];
+    const itemsToImport = inboxItems.filter((item) => {
+      const id = Number.parseInt(String(item.id), 10);
+      return Number.isInteger(id) && id > 0 && selectedInboxIds.has(id);
+    });
+    if (itemsToImport.length === 0) {
+      setStatusText('Select at least one inbox item to import.');
+      return;
+    }
     const incomingWords = itemsToImport
       .map((item) => String(item.text || '').trim())
       .filter(Boolean);
@@ -462,9 +507,19 @@ export default function App() {
       };
     });
 
-    // Clear imported rows from inbox UI immediately.
-    setInboxItems([]);
-    setShowInboxOverlay(false);
+    // Hide imported rows from inbox UI immediately and keep unselected items.
+    setImportedInboxIds((prev) => new Set([...prev, ...incomingIds]));
+    setInboxItems((prev) => prev.filter((item) => {
+      const id = Number.parseInt(String(item.id), 10);
+      return !(Number.isInteger(id) && id > 0 && incomingIds.includes(id));
+    }));
+    setSelectedInboxIds((prev) => {
+      const next = new Set(prev);
+      for (const id of incomingIds) {
+        next.delete(id);
+      }
+      return next;
+    });
   }
 
   async function confirmAddToAnki() {
@@ -532,8 +587,12 @@ export default function App() {
   }, [formState.anki_connect, formState.anki_url, showAnkiUrl]);
 
   useEffect(() => {
-    fetchInboxPending();
-  }, []);
+    fetchInboxPending({silent: true});
+    const interval = setInterval(() => {
+      fetchInboxPending({silent: true});
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [importedInboxIds]);
 
   useEffect(() => {
     if (inboxItems.length === 0) {
@@ -966,18 +1025,21 @@ export default function App() {
                         <span className="hint">{inboxItems.length} pending</span>
                       </div>
                       <div className="inbox-actions">
-                        <button type="button" className="ghost" onClick={fetchInboxPending} disabled={loadingInbox}>
-                          {loadingInbox ? 'Refreshing...' : 'Refresh Inbox'}
-                        </button>
-                        <button type="button" className="ghost" onClick={importPendingInboxToWords} disabled={inboxItems.length === 0}>
-                          Import All Pending
+                        <button type="button" className="ghost" onClick={importPendingInboxToWords} disabled={inboxItems.length === 0 || selectedInboxIds.size === 0}>
+                          Import
                         </button>
                       </div>
                       <div className="inbox-list">
                         {inboxItems.slice(0, 12).map((item) => (
                           <div key={item.id} className="inbox-item">
-                            <span className="inbox-item-text">{item.text}</span>
-                            <span className="inbox-item-meta">#{item.id}</span>
+                            <label className="inbox-item-check">
+                              <input
+                                type="checkbox"
+                                checked={selectedInboxIds.has(Number.parseInt(String(item.id), 10))}
+                                onChange={() => toggleInboxSelection(Number.parseInt(String(item.id), 10))}
+                              />
+                              <span className="inbox-item-text">{item.text}</span>
+                            </label>
                           </div>
                         ))}
                         {inboxItems.length > 12 ? <p className="hint">Showing first 12 items.</p> : null}
