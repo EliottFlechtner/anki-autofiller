@@ -94,8 +94,8 @@ h3 {
 }
 
 .status-column {
-  position: sticky;
-  top: 0.9rem;
+  position: static;
+  margin-top: 0.95rem;
 }
 
 .settings-column {
