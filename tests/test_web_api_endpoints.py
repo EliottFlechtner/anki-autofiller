@@ -294,6 +294,246 @@ class WebApiEndpointTests(unittest.TestCase):
             with web_app_module.JOB_LOCK:
                 web_app_module.JOBS.pop(job_id, None)
 
+    def test_review_add_word_appends_once_and_updates_pending_payload(self) -> None:
+        """Add-word endpoint should append exactly one review item/row and persist it."""
+        app = web_app_module.app
+        job_id = "job-add-word"
+
+        pending_add = {
+            "rows": [{"word": "A", "meaning": "mean-A", "reading": "read-A"}],
+            "sentence_rows": [],
+            "review_items": [
+                {
+                    "word": "A",
+                    "source_word": "A",
+                    "options": [
+                        {
+                            "meaning": "mean-A",
+                            "reading": "read-A",
+                            "reading_preview": "read-A",
+                        }
+                    ],
+                    "related_words": [],
+                    "selected_index": 0,
+                }
+            ],
+            "source_words": ["A"],
+            "candidate_limit": 3,
+            "include_pitch_accent": True,
+            "pitch_accent_theme": "dark",
+            "separate_sentence_cards": False,
+            "anki_url": "http://127.0.0.1:8765",
+            "deck_name": "Example",
+            "model_name": "Jisho2Anki::Vocab",
+            "field_word": "Word",
+            "field_meaning": "Translation",
+            "field_reading": "Reading",
+            "tags": ["jp"],
+            "allow_duplicates": False,
+        }
+
+        with web_app_module.JOB_LOCK:
+            web_app_module.JOBS[job_id] = {
+                "status": "done",
+                "requires_confirmation": True,
+                "pending_add": pending_add,
+                "review_items": [
+                    {
+                        "word": "A",
+                        "source_word": "A",
+                        "options": [
+                            {
+                                "meaning": "mean-A",
+                                "reading": "read-A",
+                                "reading_preview": "read-A",
+                            }
+                        ],
+                        "related_words": [],
+                        "selected_index": 0,
+                    }
+                ],
+            }
+
+        new_review_item = {
+            "word": "B",
+            "source_word": "B",
+            "options": [
+                {
+                    "meaning": "mean-B",
+                    "reading": "read-B",
+                    "reading_preview": "<svg>pitch-B</svg>",
+                }
+            ],
+            "related_words": [],
+            "selected_index": 0,
+        }
+
+        try:
+            with (
+                app.test_client() as client,
+                patch(
+                    "autofiller.web_app._build_review_items",
+                    return_value=[new_review_item],
+                ),
+            ):
+                response = client.post(
+                    f"/api/review-add-word/{job_id}",
+                    json={"word": "B"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json()
+            self.assertEqual(payload["review_item"]["word"], "B")
+
+            with web_app_module.JOB_LOCK:
+                job = web_app_module.JOBS[job_id]
+                updated_pending = job["pending_add"]
+
+            self.assertEqual(len(updated_pending["rows"]), 2)
+            self.assertEqual(updated_pending["rows"][1]["word"], "B")
+            self.assertEqual(updated_pending["rows"][1]["meaning"], "mean-B")
+            self.assertEqual(
+                updated_pending["rows"][1]["reading"], "<svg>pitch-B</svg>"
+            )
+            self.assertEqual(updated_pending["source_words"], ["A", "B"])
+            self.assertEqual(len(updated_pending["review_items"]), 2)
+            self.assertEqual(len(job["review_items"]), 2)
+        finally:
+            with web_app_module.JOB_LOCK:
+                web_app_module.JOBS.pop(job_id, None)
+
+    def test_review_add_word_rejects_duplicate_source_word(self) -> None:
+        """Add-word endpoint should reject words already present in source_words."""
+        app = web_app_module.app
+        job_id = "job-add-duplicate"
+
+        with web_app_module.JOB_LOCK:
+            web_app_module.JOBS[job_id] = {
+                "status": "done",
+                "requires_confirmation": True,
+                "pending_add": {
+                    "rows": [],
+                    "sentence_rows": [],
+                    "review_items": [],
+                    "source_words": ["A", "B"],
+                    "candidate_limit": 3,
+                    "include_pitch_accent": False,
+                    "pitch_accent_theme": "dark",
+                },
+                "review_items": [],
+            }
+
+        try:
+            with app.test_client() as client:
+                response = client.post(
+                    f"/api/review-add-word/{job_id}",
+                    json={"word": "B"},
+                )
+
+            self.assertEqual(response.status_code, 409)
+            self.assertIn("already in batch", response.get_json()["error"])
+        finally:
+            with web_app_module.JOB_LOCK:
+                web_app_module.JOBS.pop(job_id, None)
+
+    def test_confirm_add_uses_distinct_choice_per_row(self) -> None:
+        """Confirm endpoint must map each row to its own selected option, not reuse another row choice."""
+        app = web_app_module.app
+        job_id = "job-confirm-choice-mapping"
+
+        pending_add = {
+            "rows": [
+                {"word": "B", "meaning": "orig-B", "reading": "orig-B"},
+                {"word": "C", "meaning": "orig-C", "reading": "orig-C"},
+            ],
+            "sentence_rows": [],
+            "review_items": [
+                {
+                    "word": "B",
+                    "source_word": "B",
+                    "options": [
+                        {
+                            "meaning": "B-option-0",
+                            "reading": "B-r-0",
+                            "reading_preview": "<svg>B-r-0</svg>",
+                        },
+                        {
+                            "meaning": "B-option-1",
+                            "reading": "B-r-1",
+                            "reading_preview": "<svg>B-r-1</svg>",
+                        },
+                    ],
+                    "related_words": [],
+                    "selected_index": 0,
+                },
+                {
+                    "word": "C",
+                    "source_word": "C",
+                    "options": [
+                        {
+                            "meaning": "C-option-0",
+                            "reading": "C-r-0",
+                            "reading_preview": "<svg>C-r-0</svg>",
+                        },
+                        {
+                            "meaning": "C-option-1",
+                            "reading": "C-r-1",
+                            "reading_preview": "<svg>C-r-1</svg>",
+                        },
+                    ],
+                    "related_words": [],
+                    "selected_index": 0,
+                },
+            ],
+            "separate_sentence_cards": False,
+            "anki_url": "http://127.0.0.1:8765",
+            "deck_name": "Example",
+            "model_name": "Jisho2Anki::Vocab",
+            "field_word": "Word",
+            "field_meaning": "Translation",
+            "field_reading": "Reading",
+            "tags": ["jp"],
+            "allow_duplicates": False,
+        }
+
+        with web_app_module.JOB_LOCK:
+            web_app_module.JOBS[job_id] = {
+                "status": "done",
+                "requires_confirmation": True,
+                "pending_add": pending_add,
+                "anki_summary": "",
+            }
+
+        captured_rows: list[CardRow] = []
+
+        def _capture_rows(rows, **_kwargs):
+            captured_rows.extend(rows)
+            return (len(rows), 0)
+
+        try:
+            with (
+                app.test_client() as client,
+                patch("autofiller.web_app.add_rows_to_anki", side_effect=_capture_rows),
+            ):
+                response = client.post(
+                    f"/api/confirm/{job_id}",
+                    json={"choices": [1, 0]},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(len(captured_rows), 2)
+
+            self.assertEqual(captured_rows[0].word, "B")
+            self.assertEqual(captured_rows[0].meaning, "B-option-1")
+            self.assertEqual(captured_rows[0].reading, "<svg>B-r-1</svg>")
+
+            self.assertEqual(captured_rows[1].word, "C")
+            self.assertEqual(captured_rows[1].meaning, "C-option-0")
+            self.assertEqual(captured_rows[1].reading, "<svg>C-r-0</svg>")
+        finally:
+            with web_app_module.JOB_LOCK:
+                web_app_module.JOBS.pop(job_id, None)
+
 
 if __name__ == "__main__":
     unittest.main()
