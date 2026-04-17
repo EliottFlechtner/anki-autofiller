@@ -284,7 +284,7 @@ class WebApiEndpointTests(unittest.TestCase):
 
             self.assertEqual(response.status_code, 200)
             payload = response.get_json()
-            self.assertIn("Added to Anki after review", payload["anki_summary"])
+            self.assertIn("Added 1 note(s) to Anki.", payload["anki_summary"])
 
             with web_app_module.JOB_LOCK:
                 job = web_app_module.JOBS[job_id]
