@@ -81,6 +81,48 @@ class WebApiEndpointTests(unittest.TestCase):
             env_file="configs/dev.env",
         )
 
+    def test_anki_options_returns_models_and_decks(self) -> None:
+        """Anki options endpoint should expose model/deck names for dropdowns."""
+        app = web_app_module.app
+
+        with (
+            app.test_client() as client,
+            patch(
+                "autofiller.web_app.invoke",
+                side_effect=[
+                    ["Jisho2Anki::Vocab", "Basic"],
+                    ["Default", "Keio::TestApp"],
+                ],
+            ),
+        ):
+            response = client.get(
+                "/api/anki-options", query_string={"anki_url": "http://127.0.0.1:8765"}
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("Jisho2Anki::Vocab", payload["models"])
+        self.assertIn("Keio::TestApp", payload["decks"])
+
+    def test_anki_options_handles_ankiconnect_error(self) -> None:
+        """Anki options endpoint should report connection failures gracefully."""
+        app = web_app_module.app
+
+        with (
+            app.test_client() as client,
+            patch(
+                "autofiller.web_app.invoke",
+                side_effect=RuntimeError("connection failed"),
+            ),
+        ):
+            response = client.get("/api/anki-options")
+
+        self.assertEqual(response.status_code, 502)
+        payload = response.get_json()
+        self.assertEqual(payload["models"], [])
+        self.assertEqual(payload["decks"], [])
+        self.assertIn("connection failed", payload["error"])
+
     def test_generate_route_returns_410(self) -> None:
         """Legacy route should stay explicitly disabled with HTTP 410."""
         app = web_app_module.app
@@ -173,6 +215,84 @@ class WebApiEndpointTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.get_json()["error"], "job not found")
+
+    def test_status_hides_pending_add_payload(self) -> None:
+        """Status responses should not expose internal pending add payload internals."""
+        app = web_app_module.app
+        job_id = "job-with-pending"
+
+        with web_app_module.JOB_LOCK:
+            web_app_module.JOBS[job_id] = {
+                "status": "done",
+                "pending_add": {
+                    "rows": [{"word": "x", "meaning": "m", "reading": "r"}]
+                },
+                "requires_confirmation": True,
+            }
+
+        try:
+            with app.test_client() as client:
+                response = client.get(f"/api/status/{job_id}")
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json()
+            self.assertNotIn("pending_add", payload)
+        finally:
+            with web_app_module.JOB_LOCK:
+                web_app_module.JOBS.pop(job_id, None)
+
+    def test_confirm_add_executes_pending_submission(self) -> None:
+        """Confirm endpoint should submit pending reviewed rows and clear confirmation state."""
+        app = web_app_module.app
+        job_id = "job-confirm"
+
+        pending_add = {
+            "rows": [{"word": "食べる", "meaning": "eat", "reading": "たべる"}],
+            "sentence_rows": [{"front": "文", "back": "sentence"}],
+            "separate_sentence_cards": True,
+            "anki_url": "http://127.0.0.1:8765",
+            "deck_name": "Example",
+            "model_name": "Jisho2Anki::Vocab",
+            "field_word": "Word",
+            "field_meaning": "Translation",
+            "field_reading": "Reading",
+            "tags": ["jp"],
+            "allow_duplicates": False,
+            "sentence_deck_name": "Example::Sentences",
+            "sentence_model_name": "Basic",
+            "sentence_front_field": "Front",
+            "sentence_back_field": "Back",
+        }
+
+        with web_app_module.JOB_LOCK:
+            web_app_module.JOBS[job_id] = {
+                "status": "done",
+                "requires_confirmation": True,
+                "pending_add": pending_add,
+                "anki_summary": "",
+            }
+
+        try:
+            with (
+                app.test_client() as client,
+                patch("autofiller.web_app.add_rows_to_anki", return_value=(1, 0)),
+                patch(
+                    "autofiller.web_app.add_sentence_rows_to_anki",
+                    return_value=(1, 0),
+                ),
+            ):
+                response = client.post(f"/api/confirm/{job_id}")
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json()
+            self.assertIn("Added to Anki after review", payload["anki_summary"])
+
+            with web_app_module.JOB_LOCK:
+                job = web_app_module.JOBS[job_id]
+            self.assertFalse(job["requires_confirmation"])
+            self.assertIsNone(job["pending_add"])
+        finally:
+            with web_app_module.JOB_LOCK:
+                web_app_module.JOBS.pop(job_id, None)
 
 
 if __name__ == "__main__":

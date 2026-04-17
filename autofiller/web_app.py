@@ -11,12 +11,13 @@ from typing import Any, Mapping
 
 from flask import Flask, jsonify, render_template, request
 
-from .anki_connect_client import add_rows_to_anki, add_sentence_rows_to_anki
+from .anki_connect_client import add_rows_to_anki, add_sentence_rows_to_anki, invoke
 from .config import (
     available_presets,
     load_settings,
 )
 from .io_utils import normalize_words, write_tsv
+from .models import CardRow, SentenceCardRow
 from .pipeline import build_rows
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -108,6 +109,46 @@ def _serialize_rows_preview(rows: list[Any], limit: int = 60) -> list[dict[str, 
     return [
         {"word": row.word, "meaning": row.meaning, "reading": row.reading}
         for row in rows[:limit]
+    ]
+
+
+def _serialize_sentence_rows_preview(
+    rows: list[Any], limit: int = 60
+) -> list[dict[str, str]]:
+    """Serialize generated sentence rows into a lightweight preview payload.
+
+    Args:
+        rows: Full generated sentence-row list.
+        limit: Maximum number of rows to include in preview.
+
+    Returns:
+        JSON-serializable preview row dictionaries.
+    """
+    return [{"front": row.front, "back": row.back} for row in rows[:limit]]
+
+
+def _deserialize_card_rows(payload_rows: list[dict[str, str]]) -> list[CardRow]:
+    """Rebuild `CardRow` objects from serialized payload dictionaries."""
+    return [
+        CardRow(
+            word=str(item.get("word", "")),
+            meaning=str(item.get("meaning", "")),
+            reading=str(item.get("reading", "")),
+        )
+        for item in payload_rows
+    ]
+
+
+def _deserialize_sentence_rows(
+    payload_rows: list[dict[str, str]],
+) -> list[SentenceCardRow]:
+    """Rebuild `SentenceCardRow` objects from serialized payload dictionaries."""
+    return [
+        SentenceCardRow(
+            front=str(item.get("front", "")),
+            back=str(item.get("back", "")),
+        )
+        for item in payload_rows
     ]
 
 
@@ -283,19 +324,6 @@ def _build_from_form(
     if _bool_from_form(
         form_data.get("anki_connect"), default=bool(settings["anki_connect"])
     ):
-        if review_before_anki:
-            anki_summary = (
-                "Review mode enabled: preview generated, no notes were sent to Anki."
-            )
-            return {
-                "rows": rows,
-                "output_path": str(output_path),
-                "message": f"Generated {len(rows)} rows.",
-                "anki_summary": anki_summary,
-                "preset": preset_name,
-                "env_file": env_file,
-            }
-
         anki_url = _value_from_form(form_data, "anki_url", str(settings["anki_url"]))
         deck_name = _value_from_form(form_data, "deck_name", str(settings["deck_name"]))
         model_name = _value_from_form(
@@ -341,6 +369,38 @@ def _build_from_form(
             str(settings["sentence_back_field"]),
         )
 
+        if review_before_anki:
+            anki_summary = "Review mode enabled: preview generated. Confirm to add these notes to Anki."
+            return {
+                "rows": rows,
+                "sentence_rows": sentence_rows,
+                "output_path": str(output_path),
+                "message": f"Generated {len(rows)} rows.",
+                "anki_summary": anki_summary,
+                "preset": preset_name,
+                "env_file": env_file,
+                "requires_confirmation": True,
+                "pending_add": {
+                    "rows": _serialize_rows_preview(rows, limit=len(rows)),
+                    "sentence_rows": _serialize_sentence_rows_preview(
+                        sentence_rows, limit=len(sentence_rows)
+                    ),
+                    "separate_sentence_cards": separate_sentence_cards,
+                    "anki_url": anki_url,
+                    "deck_name": deck_name,
+                    "model_name": model_name,
+                    "field_word": field_word,
+                    "field_meaning": field_meaning,
+                    "field_reading": field_reading,
+                    "tags": tags,
+                    "allow_duplicates": allow_duplicates,
+                    "sentence_deck_name": sentence_deck_name,
+                    "sentence_model_name": sentence_model_name,
+                    "sentence_front_field": sentence_front_field,
+                    "sentence_back_field": sentence_back_field,
+                },
+            }
+
         success, failed = add_rows_to_anki(
             rows,
             url=anki_url,
@@ -374,11 +434,13 @@ def _build_from_form(
 
     return {
         "rows": rows,
+        "sentence_rows": sentence_rows,
         "output_path": str(output_path),
         "message": f"Generated {len(rows)} rows.",
         "anki_summary": anki_summary,
         "preset": preset_name,
         "env_file": env_file,
+        "requires_confirmation": False,
     }
 
 
@@ -401,6 +463,33 @@ def api_settings_preview() -> Any:
             "presets": available_presets(),
         }
     )
+
+
+@app.get("/api/anki-options")
+def api_anki_options() -> Any:
+    """Return available Anki model and deck names for dropdown selection.
+
+    Query params:
+        anki_url: Optional AnkiConnect endpoint URL.
+
+    Returns:
+        JSON payload with `models` and `decks` arrays, or a descriptive error.
+    """
+    anki_url = request.args.get("anki_url", "").strip() or str(
+        load_settings()["anki_url"]
+    )
+
+    try:
+        models = invoke(anki_url, "modelNames", {})
+        decks = invoke(anki_url, "deckNames", {})
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc), "models": [], "decks": []}), 502
+
+    safe_models = (
+        sorted(str(name) for name in models) if isinstance(models, list) else []
+    )
+    safe_decks = sorted(str(name) for name in decks) if isinstance(decks, list) else []
+    return jsonify({"models": safe_models, "decks": safe_decks})
 
 
 def _run_job(job_id: str, form_data: dict[str, str]) -> None:
@@ -453,8 +542,13 @@ def _run_job(job_id: str, form_data: dict[str, str]) -> None:
             anki_summary=result["anki_summary"],
             output_path=result["output_path"],
             preview=_serialize_rows_preview(result["rows"]),
+            sentence_preview=_serialize_sentence_rows_preview(
+                result.get("sentence_rows", [])
+            ),
             preset=form_data.get("preset", ""),
             env_file=form_data.get("env_file", ""),
+            requires_confirmation=bool(result.get("requires_confirmation", False)),
+            pending_add=result.get("pending_add"),
         )
     except Exception as exc:  # noqa: BLE001
         _job_update(job_id, status="error", error=str(exc))
@@ -515,7 +609,80 @@ def api_status(job_id: str) -> Any:
         job = JOBS.get(job_id)
     if not job:
         return jsonify({"error": "job not found"}), 404
-    return jsonify(job)
+    payload = dict(job)
+    payload.pop("pending_add", None)
+    return jsonify(payload)
+
+
+@app.post("/api/confirm/<job_id>")
+def api_confirm(job_id: str) -> Any:
+    """Confirm and execute pending Anki add for a previously reviewed job.
+
+    Args:
+        job_id: Target job identifier.
+
+    Returns:
+        JSON response with the resulting Anki summary or an error payload.
+    """
+    with JOB_LOCK:
+        job = JOBS.get(job_id)
+        if not job:
+            return jsonify({"error": "job not found"}), 404
+
+        if not job.get("requires_confirmation"):
+            return jsonify({"error": "job does not require confirmation"}), 400
+
+        pending_add = job.get("pending_add")
+        if not isinstance(pending_add, dict):
+            return jsonify({"error": "no pending add payload"}), 400
+
+    try:
+        rows = _deserialize_card_rows(pending_add.get("rows", []))
+        sentence_rows = _deserialize_sentence_rows(pending_add.get("sentence_rows", []))
+
+        success, failed = add_rows_to_anki(
+            rows,
+            url=str(pending_add.get("anki_url", "")),
+            deck_name=str(pending_add.get("deck_name", "")),
+            model_name=str(pending_add.get("model_name", "")),
+            word_field=str(pending_add.get("field_word", "Word")),
+            meaning_field=str(pending_add.get("field_meaning", "Translation")),
+            reading_field=str(pending_add.get("field_reading", "Reading")),
+            tags=list(pending_add.get("tags", [])),
+            allow_duplicates=bool(pending_add.get("allow_duplicates", False)),
+        )
+
+        summary = (
+            "Added to Anki after review: "
+            f"success={success}, failed={failed}, endpoint={pending_add.get('anki_url', '')}"
+        )
+
+        if pending_add.get("separate_sentence_cards"):
+            sent_success, sent_failed = add_sentence_rows_to_anki(
+                sentence_rows,
+                url=str(pending_add.get("anki_url", "")),
+                deck_name=str(pending_add.get("sentence_deck_name", "")),
+                model_name=str(pending_add.get("sentence_model_name", "")),
+                front_field=str(pending_add.get("sentence_front_field", "Front")),
+                back_field=str(pending_add.get("sentence_back_field", "Back")),
+                tags=list(pending_add.get("tags", [])),
+                allow_duplicates=bool(pending_add.get("allow_duplicates", False)),
+            )
+            summary += (
+                f" | Sentence cards: success={sent_success}, failed={sent_failed}, "
+                f"deck={pending_add.get('sentence_deck_name', '')}"
+            )
+
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 500
+
+    _job_update(
+        job_id,
+        requires_confirmation=False,
+        pending_add=None,
+        anki_summary=summary,
+    )
+    return jsonify({"anki_summary": summary})
 
 
 @app.post("/generate")
