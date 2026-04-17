@@ -114,8 +114,6 @@ export default function App() {
   const [ankiDecks, setAnkiDecks] = useState([]);
   const [loadingAnkiOptions, setLoadingAnkiOptions] = useState(false);
   const [inboxItems, setInboxItems] = useState([]);
-  const [selectedInboxIds, setSelectedInboxIds] = useState(new Set());
-  const [seenInboxIds, setSeenInboxIds] = useState(new Set());
   const [importedInboxIds, setImportedInboxIds] = useState(new Set());
   const [showInboxOverlay, setShowInboxOverlay] = useState(false);
   const [loadingInbox, setLoadingInbox] = useState(false);
@@ -411,24 +409,10 @@ export default function App() {
         return Number.isInteger(id) && id > 0 && !importedInboxIds.has(id);
       });
       setInboxItems(items);
-      const visibleIds = items
-        .map((item) => Number.parseInt(String(item.id), 10))
-        .filter((id) => Number.isInteger(id) && id > 0);
-      setSelectedInboxIds((prev) => {
-        const next = new Set();
-        for (const id of visibleIds) {
-          if (prev.has(id) || !seenInboxIds.has(id)) {
-            next.add(id);
-          }
-        }
-        return next;
-      });
-      setSeenInboxIds((prev) => new Set([...prev, ...visibleIds]));
       return items;
     } catch (error) {
       setStatusText(`Could not load inbox: ${error}`);
       setInboxItems([]);
-      setSelectedInboxIds(new Set());
       return [];
     } finally {
       if (!silent) {
@@ -448,32 +432,13 @@ export default function App() {
     setShowInboxOverlay((prev) => !prev);
   }
 
-  function toggleInboxSelection(id) {
-    setSelectedInboxIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }
-
   function importPendingInboxToWords() {
     if (!Array.isArray(inboxItems) || inboxItems.length === 0) {
       setStatusText('Inbox empty.');
       return;
     }
 
-    const itemsToImport = inboxItems.filter((item) => {
-      const id = Number.parseInt(String(item.id), 10);
-      return Number.isInteger(id) && id > 0 && selectedInboxIds.has(id);
-    });
-    if (itemsToImport.length === 0) {
-      setStatusText('Select at least one inbox item to import.');
-      return;
-    }
+    const itemsToImport = [...inboxItems];
     const incomingWords = itemsToImport
       .map((item) => String(item.text || '').trim())
       .filter(Boolean);
@@ -513,13 +478,6 @@ export default function App() {
       const id = Number.parseInt(String(item.id), 10);
       return !(Number.isInteger(id) && id > 0 && incomingIds.includes(id));
     }));
-    setSelectedInboxIds((prev) => {
-      const next = new Set(prev);
-      for (const id of incomingIds) {
-        next.delete(id);
-      }
-      return next;
-    });
   }
 
   async function confirmAddToAnki() {
@@ -1025,21 +983,14 @@ export default function App() {
                         <span className="hint">{inboxItems.length} pending</span>
                       </div>
                       <div className="inbox-actions">
-                        <button type="button" className="ghost" onClick={importPendingInboxToWords} disabled={inboxItems.length === 0 || selectedInboxIds.size === 0}>
+                        <button type="button" className="ghost" onClick={importPendingInboxToWords} disabled={inboxItems.length === 0}>
                           Import
                         </button>
                       </div>
                       <div className="inbox-list">
                         {inboxItems.slice(0, 12).map((item) => (
                           <div key={item.id} className="inbox-item">
-                            <label className="inbox-item-check">
-                              <input
-                                type="checkbox"
-                                checked={selectedInboxIds.has(Number.parseInt(String(item.id), 10))}
-                                onChange={() => toggleInboxSelection(Number.parseInt(String(item.id), 10))}
-                              />
-                              <span className="inbox-item-text">{item.text}</span>
-                            </label>
+                            <span className="inbox-item-text">{item.text}</span>
                           </div>
                         ))}
                         {inboxItems.length > 12 ? <p className="hint">Showing first 12 items.</p> : null}
