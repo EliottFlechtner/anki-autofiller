@@ -97,6 +97,7 @@ export default function App() {
   const [reviewChoices, setReviewChoices] = useState([]);
   const [reviewIndex, setReviewIndex] = useState(0);
   const [addedBatchWords, setAddedBatchWords] = useState(new Set());
+  const [addingBatchWords, setAddingBatchWords] = useState(new Set());
   const [confirmationJobId, setConfirmationJobId] = useState('');
   const [confirmingAdd, setConfirmingAdd] = useState(false);
   const [jobId, setJobId] = useState('');
@@ -214,6 +215,8 @@ export default function App() {
           setReviewItems(effectiveReviewItems);
           setReviewChoices(effectiveReviewItems.map((item) => item.selected_index || 0));
           setReviewIndex(0);
+          setAddedBatchWords(new Set());
+          setAddingBatchWords(new Set());
           setConfirmationJobId(data.requires_confirmation ? jobId : '');
           setStatusText('Generation complete.');
           setJobId('');
@@ -226,6 +229,8 @@ export default function App() {
           setReviewItems([]);
           setReviewChoices([]);
           setReviewIndex(0);
+          setAddedBatchWords(new Set());
+          setAddingBatchWords(new Set());
           setConfirmationJobId('');
           setStatusText('Generation failed.');
           setJobId('');
@@ -295,6 +300,8 @@ export default function App() {
     setReviewItems([]);
     setReviewChoices([]);
     setReviewIndex(0);
+    setAddedBatchWords(new Set());
+    setAddingBatchWords(new Set());
     setConfirmationJobId('');
     setProgress({status: 'starting', completed: 0, total: 0, log: []});
     setStatusText('Starting generation...');
@@ -334,6 +341,8 @@ export default function App() {
       setReviewItems([]);
       setReviewChoices([]);
       setReviewIndex(0);
+      setAddedBatchWords(new Set());
+      setAddingBatchWords(new Set());
       setStatusText('Reviewed notes were added to Anki.');
     } catch (error) {
       setStatusText(`Could not confirm add: ${error}`);
@@ -421,7 +430,7 @@ export default function App() {
 
 
 
-  function requestRelatedWordInBatch(word) {
+  async function requestRelatedWordInBatch(word) {
     const cleanWord = String(word || '').trim();
     if (!cleanWord) {
       return;
@@ -430,31 +439,57 @@ export default function App() {
       setStatusText(`Already added to batch: ${cleanWord}`);
       return;
     }
+    if (addingBatchWords.has(cleanWord)) {
+      return;
+    }
+    if (!confirmationJobId) {
+      setStatusText('Cannot add to batch right now. Please regenerate and try again.');
+      return;
+    }
+
+    setAddingBatchWords((prev) => new Set([...prev, cleanWord]));
     setStatusText(`Adding to review batch: ${cleanWord}`);
-    const candidateLimit = parseInt(formState.candidate_limit) || 1;
-    const includePitch = formState.include_pitch_accent;
-    const pitchTheme = formState.pitch_accent_theme;
-    const params = new URLSearchParams({
-      word: cleanWord,
-      candidate_limit: candidateLimit,
-      include_pitch_accent: includePitch ? 'true' : 'false',
-      pitch_accent_theme: pitchTheme
-    });
-    fetch(`/api/search-candidates?${params}`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.review_item) {
-          setReviewItems(prev => [...prev, data.review_item]);
-          setReviewChoices(prev => [...prev, 0]);
-          setAddedBatchWords(prev => new Set([...prev, cleanWord]));
-          setStatusText(`✓ Added to review: ${cleanWord}`);
-        } else {
-          setStatusText(`No Jisho entry found for: ${cleanWord}`);
-        }
-      })
-      .catch(err => {
-        setStatusText(`Error adding ${cleanWord} to batch`);
+
+    try {
+      const resp = await fetch(`/api/review-add-word/${confirmationJobId}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({word: cleanWord}),
       });
+      const data = await resp.json();
+      if (!resp.ok) {
+        throw new Error(data.error || `HTTP ${resp.status}`);
+      }
+
+      if (!data.review_item) {
+        setStatusText(`No Jisho entry found for: ${cleanWord}`);
+        return;
+      }
+
+      const selectedIndex = Number.isInteger(data.selected_index) ? data.selected_index : 0;
+      const selectedOption = data.review_item.options?.[selectedIndex] || data.review_item.options?.[0] || {meaning: '', reading_preview: '', reading: ''};
+
+      setReviewItems((prev) => [...prev, data.review_item]);
+      setReviewChoices((prev) => [...prev, selectedIndex]);
+      setPreviewRows((prev) => [
+        ...prev,
+        {
+          word: data.review_item.word || cleanWord,
+          meaning: selectedOption.meaning || '',
+          reading: selectedOption.reading_preview || selectedOption.reading || '',
+        },
+      ]);
+      setAddedBatchWords((prev) => new Set([...prev, cleanWord]));
+      setStatusText(`Added to batch: ${cleanWord}`);
+    } catch (error) {
+      setStatusText(`Error adding ${cleanWord} to batch: ${error}`);
+    } finally {
+      setAddingBatchWords((prev) => {
+        const next = new Set(prev);
+        next.delete(cleanWord);
+        return next;
+      });
+    }
   }
 
   function sanitizeLogLine(line) {
@@ -563,13 +598,25 @@ export default function App() {
                                       <div className="review-related-head"><strong>{related.word}</strong>{related.reading ? ` (${related.reading})` : ''}</div>
                                       <div className="review-related-meaning">{related.meaning || '(no meaning)'}</div>
                                     </div>
-                                    <button type="button" className="ghost" onClick={() => requestRelatedWordInBatch(related.word)}>
-                                      Add To Batch
-                                    </button>
+                                      {(() => {
+                                        const isAdded = addedBatchWords.has(related.word);
+                                        const isAdding = addingBatchWords.has(related.word);
+                                        return (
+                                          <button
+                                            type="button"
+                                            className={`ghost ${isAdded ? 'disabled' : ''}`}
+                                            disabled={isAdded || isAdding}
+                                            onClick={() => requestRelatedWordInBatch(related.word)}
+                                            style={(isAdded || isAdding) ? {opacity: 0.5, cursor: 'not-allowed'} : {}}
+                                          >
+                                            {isAdded ? 'Added \u2713' : (isAdding ? 'Adding...' : 'Add To Batch')}
+                                          </button>
+                                        );
+                                      })()}
                                   </div>
                                 ))}
                               </div>
-                              <p className="hint">Added words go to input box. Run generation again to create cards for them.</p>
+                                <p className="hint">Click to fetch Jisho entry and add to your review queue.</p>
                             </div>
                           ) : null}
                         </article>
@@ -593,8 +640,6 @@ export default function App() {
                 </section>
               ) : null}
 
-              <div className="progress-meta">{progress.status} ({progress.completed}/{progress.total})</div>
-              <pre className="log-box">{(progress.log || []).map((line) => sanitizeLogLine(line)).join('\n')}</pre>
               {result.message ? <p className="result-line">{result.message}</p> : null}
               {result.summary ? <p className="result-line">{result.summary}</p> : null}
 

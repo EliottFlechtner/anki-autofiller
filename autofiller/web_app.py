@@ -6,6 +6,7 @@ import os
 import re
 import threading
 import uuid
+import copy
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -489,7 +490,7 @@ def _build_from_form(
                     "sentence_rows": _serialize_sentence_rows_preview(
                         sentence_rows, limit=len(sentence_rows)
                     ),
-                    "review_items": review_items,
+                    "review_items": copy.deepcopy(review_items),
                     "source_words": words,
                     "candidate_limit": candidate_limit,
                     "include_pitch_accent": include_pitch_accent,
@@ -892,6 +893,87 @@ def api_review_items(job_id: str) -> Any:
 
     _job_update(job_id, review_items=review_items)
     return jsonify({"review_items": review_items})
+
+
+@app.post("/api/review-add-word/<job_id>")
+def api_review_add_word(job_id: str) -> Any:
+    """Append one related word to an in-progress review job.
+
+    This updates both in-memory review items and the pending add payload so
+    confirm-to-Anki includes the newly added word.
+    """
+    with JOB_LOCK:
+        job = JOBS.get(job_id)
+        if not job:
+            return jsonify({"error": "job not found"}), 404
+
+        if not job.get("requires_confirmation"):
+            return jsonify({"error": "job does not require confirmation"}), 400
+
+        pending_add = job.get("pending_add")
+        if not isinstance(pending_add, dict):
+            return jsonify({"error": "no pending add payload"}), 400
+
+    request_body = request.get_json(silent=True) or {}
+    word = str(request_body.get("word", "")).strip()
+    if not word:
+        return jsonify({"error": "word is required"}), 400
+
+    try:
+        source_words_raw = pending_add.get("source_words", [])
+        source_words = (
+            [str(item).strip() for item in source_words_raw if str(item).strip()]
+            if isinstance(source_words_raw, list)
+            else []
+        )
+        if word in source_words:
+            return jsonify({"error": "word already in batch"}), 409
+
+        review_items = _build_review_items(
+            words=[word],
+            candidate_limit=max(int(pending_add.get("candidate_limit", 1)), 1),
+            include_pitch_accent=bool(pending_add.get("include_pitch_accent", False)),
+            pitch_accent_theme=str(pending_add.get("pitch_accent_theme", "dark")),
+            generated_rows=[],
+        )
+        if not review_items:
+            return jsonify({"error": "no candidates found"}), 404
+
+        review_item = review_items[0]
+        options = (
+            review_item.get("options", []) if isinstance(review_item, dict) else []
+        )
+        selected_index = 0
+        selected_option = options[0] if isinstance(options, list) and options else {}
+
+        rows_payload = pending_add.get("rows", [])
+        if not isinstance(rows_payload, list):
+            rows_payload = []
+        rows_payload.append(
+            {
+                "word": str(review_item.get("word", word)),
+                "meaning": str(selected_option.get("meaning", "")),
+                "reading": str(selected_option.get("reading_preview", "")),
+            }
+        )
+        pending_add["rows"] = rows_payload
+
+        pending_review_items = pending_add.get("review_items", [])
+        if not isinstance(pending_review_items, list):
+            pending_review_items = []
+        updated_review_items = [*pending_review_items, review_item]
+        pending_add["review_items"] = updated_review_items
+
+        source_words.append(word)
+        pending_add["source_words"] = source_words
+
+        current_review_items = updated_review_items
+
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 500
+
+    _job_update(job_id, pending_add=pending_add, review_items=current_review_items)
+    return jsonify({"review_item": review_item, "selected_index": selected_index})
 
 
 @app.get("/api/search-candidates")
