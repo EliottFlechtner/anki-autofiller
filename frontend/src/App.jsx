@@ -106,6 +106,36 @@ export default function App() {
   const [ankiDecks, setAnkiDecks] = useState([]);
   const [loadingAnkiOptions, setLoadingAnkiOptions] = useState(false);
 
+  function stripHtmlText(value) {
+    if (!value) {
+      return '';
+    }
+    return String(value).replace(/<[^>]*>/g, '').trim();
+  }
+
+  function buildFallbackReviewItems(rows) {
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return [];
+    }
+    return rows.map((row) => {
+      const word = String(row.word || '');
+      const reading = String(row.reading || '');
+      const meaning = String(row.meaning || '');
+      return {
+        word,
+        source_word: stripHtmlText(word),
+        selected_index: 0,
+        options: [
+          {
+            meaning,
+            reading: stripHtmlText(reading),
+            reading_preview: reading,
+          },
+        ],
+      };
+    });
+  }
+
   useEffect(() => {
     let isMounted = true;
     fetch('/api/bootstrap')
@@ -157,11 +187,31 @@ export default function App() {
         });
 
         if (data.status === 'done') {
+          const statusPreviewRows = Array.isArray(data.preview) ? data.preview : [];
+          const statusReviewItems = Array.isArray(data.review_items) ? data.review_items : [];
+          let effectiveReviewItems = statusReviewItems;
+
+          if (data.requires_confirmation && effectiveReviewItems.length === 0) {
+            try {
+              const reviewResp = await fetch(`/api/review-items/${jobId}`);
+              const reviewPayload = await reviewResp.json();
+              if (reviewResp.ok && Array.isArray(reviewPayload.review_items) && reviewPayload.review_items.length > 0) {
+                effectiveReviewItems = reviewPayload.review_items;
+              }
+            } catch (_error) {
+              // Fall through to local fallback below.
+            }
+          }
+
+          if (data.requires_confirmation && effectiveReviewItems.length === 0 && statusPreviewRows.length > 0) {
+            effectiveReviewItems = buildFallbackReviewItems(statusPreviewRows);
+          }
+
           setResult({message: data.message || '', summary: data.anki_summary || ''});
-          setPreviewRows(data.preview || []);
+          setPreviewRows(statusPreviewRows);
           setPreviewSentenceRows(data.sentence_preview || []);
-          setReviewItems(data.review_items || []);
-          setReviewChoices((data.review_items || []).map((item) => item.selected_index || 0));
+          setReviewItems(effectiveReviewItems);
+          setReviewChoices(effectiveReviewItems.map((item) => item.selected_index || 0));
           setReviewIndex(0);
           setConfirmationJobId(data.requires_confirmation ? jobId : '');
           setStatusText('Generation complete.');
@@ -368,14 +418,53 @@ export default function App() {
     setReviewIndex(clamped);
   }
 
-  function renderReadingPreview(option) {
-    if (!option) {
-      return null;
+
+
+  function requestRelatedWordInBatch(word) {
+    const cleanWord = String(word || '').trim();
+    if (!cleanWord) {
+      return;
     }
-    if (option.reading_preview && option.reading_preview.includes('<svg')) {
-      return <div className="pitch-preview" dangerouslySetInnerHTML={{__html: option.reading_preview}} />;
+    const existingWord = previewRows.find(row => row.word === cleanWord);
+    if (existingWord) {
+      setStatusText(`Related word already in batch: ${cleanWord}`);
+      return;
     }
-    return <div className="reading-preview-text">{option.reading_preview || option.reading}</div>;
+    setStatusText(`Requesting card for: ${cleanWord}`);
+    const formData = toFormData(formState, false);
+    formData.set('words', cleanWord);
+    fetch('/api/start', {method: 'POST', body: formData})
+      .then(r => r.json())
+      .then(data => {
+        const tempJobId = data.job_id;
+        const pollInterval = setInterval(() => {
+          fetch(`/api/status/${tempJobId}`)
+            .then(r => r.json())
+            .then(job => {
+              if (job.status === 'done') {
+                clearInterval(pollInterval);
+                if (job.preview && job.preview.length > 0) {
+                  setPreviewRows(prev => [...prev, ...job.preview]);
+                  setStatusText(`✓ Added to preview: ${cleanWord}`);
+                }
+              } else if (job.status === 'error') {
+                clearInterval(pollInterval);
+                setStatusText(`Error requesting ${cleanWord}: ${job.error}`);
+              }
+            })
+            .catch(err => {
+              clearInterval(pollInterval);
+              setStatusText(`Failed to request ${cleanWord}`);
+            });
+        }, 500);
+      })
+      .catch(err => {
+        setStatusText(`Failed to request ${cleanWord}`);
+      });
+  }
+
+  function sanitizeLogLine(line) {
+    return line.replace(/<!-- accent_start -->[\s\S]*?<!-- accent_end -->/g, '[pitch SVG omitted]');
   }
 
   if (!bootLoaded) {
@@ -383,6 +472,8 @@ export default function App() {
   }
 
   const showSentenceCardSettings = formState.include_sentences && formState.separate_sentence_cards;
+  const reviewSectionVisible = formState.review_before_anki && previewRows.length > 0;
+  const reviewSectionReady = reviewSectionVisible && reviewItems.length > 0;
 
   return (
     <div className="shell">
@@ -403,91 +494,115 @@ export default function App() {
                   Review generated rows before sending to Anki
                 </label>
               ) : null}
-              <div className="progress-meta">{progress.status} ({progress.completed}/{progress.total})</div>
-              <pre className="log-box">{(progress.log || []).join('\n')}</pre>
-              {result.message ? <p className="result-line">{result.message}</p> : null}
-              {result.summary ? <p className="result-line">{result.summary}</p> : null}
 
-              {confirmationJobId && reviewItems.length > 0 ? (
-                <section className="review-panel">
+              {reviewSectionVisible ? (
+                <section className="review-panel review-panel-inline">
                   <div className="review-panel-head">
                     <div>
                       <div className="review-kicker">Review before add</div>
                       <h3>Choose the right definition for each word</h3>
                       <p className="hint">Pick the candidate you want for this note, then confirm to send the reviewed rows to Anki.</p>
                     </div>
-                    <div className="review-progress">
-                      {reviewIndex + 1} / {reviewItems.length}
-                    </div>
+                    {reviewSectionReady ? (
+                      <div className="review-progress">
+                        {reviewIndex + 1} / {reviewItems.length}
+                      </div>
+                    ) : null}
                   </div>
 
-                  <div className="review-nav">
-                    <button type="button" className="ghost" onClick={() => goToReviewIndex(reviewIndex - 1)} disabled={reviewIndex === 0}>
-                      Previous
-                    </button>
-                    <button type="button" className="ghost" onClick={() => goToReviewIndex(reviewIndex + 1)} disabled={reviewIndex >= reviewItems.length - 1}>
-                      Next
-                    </button>
-                  </div>
-
-                  {currentReviewItem() ? (
-                    <article className="review-card">
-                      <div className="review-card-top">
-                        <div>
-                          <div className="review-word-label">Word</div>
-                          <div className="review-word" dangerouslySetInnerHTML={{__html: currentReviewItem().word}} />
-                          <div className="review-source">Source: {currentReviewItem().source_word}</div>
-                        </div>
-                        <div className="review-choice-count">
-                          {currentReviewChoice() + 1} of {currentReviewItem().options.length}
-                        </div>
+                  {reviewSectionReady ? (
+                    <>
+                      <div className="review-nav">
+                        <button type="button" className="ghost" onClick={() => goToReviewIndex(reviewIndex - 1)} disabled={reviewIndex === 0}>
+                          Previous
+                        </button>
+                        <button type="button" className="ghost" onClick={() => goToReviewIndex(reviewIndex + 1)} disabled={reviewIndex >= reviewItems.length - 1}>
+                          Next
+                        </button>
                       </div>
 
-                      <div className="review-options">
-                        {currentReviewItem().options.map((option, optionIndex) => {
-                          const isSelected = optionIndex === currentReviewChoice();
-                          return (
-                            <button
-                              key={`${reviewIndex}-${optionIndex}`}
-                              type="button"
-                              className={`review-option ${isSelected ? 'selected' : ''}`}
-                              onClick={() => setCurrentReviewChoice(optionIndex)}
-                            >
-                              <div className="review-option-head">
-                                <span className="review-option-badge">{optionIndex + 1}</span>
-                                <span className="review-option-meaning">{option.meaning || '(blank meaning)'}</span>
+                      {currentReviewItem() ? (
+                        <article className="review-card">
+                          <div className="review-card-top">
+                            <div>
+                              <div className="review-word-label">Word</div>
+                              <div className="review-word" dangerouslySetInnerHTML={{__html: currentReviewItem().word}} />
+                              <div className="review-source">Source: {currentReviewItem().source_word}</div>
+                            </div>
+                            <div className="review-choice-count">
+                              {currentReviewChoice() + 1} of {currentReviewItem().options.length}
+                            </div>
+                          </div>
+
+                          <div className="review-options">
+                            {currentReviewItem().options.map((option, optionIndex) => {
+                              const isSelected = optionIndex === currentReviewChoice();
+                              return (
+                                <button
+                                  key={`${reviewIndex}-${optionIndex}`}
+                                  type="button"
+                                  className={`review-option ${isSelected ? 'selected' : ''}`}
+                                  onClick={() => setCurrentReviewChoice(optionIndex)}
+                                >
+                                  <div className="review-option-head">
+                                    <span className="review-option-badge">{optionIndex + 1}</span>
+                                    <span className="review-option-meaning">{option.meaning || '(blank meaning)'}</span>
+                                  </div>
+                                  <div className="review-option-reading">{option.reading || '(no reading)'}</div>
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          <div className="review-details">
+                            <div><strong>Selected meaning:</strong> {currentReviewItem().options[currentReviewChoice()]?.meaning || '(blank meaning)'}</div>
+                            <div><strong>Selected reading:</strong> {currentReviewItem().options[currentReviewChoice()]?.reading || '(no reading)'}</div>
+                          </div>
+
+                          {(currentReviewItem().related_words || []).length > 0 ? (
+                            <div className="review-related-block">
+                              <div className="review-preview-label">Related words from Jisho</div>
+                              <div className="review-related-list">
+                                {(currentReviewItem().related_words || []).map((related, idx) => (
+                                  <div className="review-related-item" key={`${currentReviewItem().source_word}-${idx}-${related.word}`}>
+                                    <div className="review-related-main">
+                                      <div className="review-related-head"><strong>{related.word}</strong>{related.reading ? ` (${related.reading})` : ''}</div>
+                                      <div className="review-related-meaning">{related.meaning || '(no meaning)'}</div>
+                                    </div>
+                                    <button type="button" className="ghost" onClick={() => requestRelatedWordInBatch(related.word)}>
+                                      Add To Batch
+                                    </button>
+                                  </div>
+                                ))}
                               </div>
-                              <div className="review-option-reading">{option.reading || '(no reading)'}</div>
-                            </button>
-                          );
-                        })}
-                      </div>
+                              <p className="hint">Added words go to input box. Run generation again to create cards for them.</p>
+                            </div>
+                          ) : null}
+                        </article>
+                      ) : null}
 
-                      <div className="review-preview-block">
-                        <div className="review-preview-label">Reading preview</div>
-                        {renderReadingPreview(currentReviewItem().options[currentReviewChoice()])}
+                      <div className="review-nav review-nav-bottom">
+                        <button type="button" className="ghost" onClick={() => goToReviewIndex(reviewIndex - 1)} disabled={reviewIndex === 0}>
+                          Previous
+                        </button>
+                        <button type="button" className="ghost" onClick={() => goToReviewIndex(reviewIndex + 1)} disabled={reviewIndex >= reviewItems.length - 1}>
+                          Next
+                        </button>
+                        <button className="submit" type="button" onClick={confirmAddToAnki} disabled={confirmingAdd || !confirmationJobId}>
+                          {confirmingAdd ? 'Confirming...' : 'Confirm and Add Reviewed Notes to Anki'}
+                        </button>
                       </div>
-
-                      <div className="review-details">
-                        <div><strong>Selected meaning:</strong> {currentReviewItem().options[currentReviewChoice()]?.meaning || '(blank meaning)'}</div>
-                        <div><strong>Selected reading:</strong> {currentReviewItem().options[currentReviewChoice()]?.reading || '(no reading)'}</div>
-                      </div>
-                    </article>
-                  ) : null}
-
-                  <div className="review-nav review-nav-bottom">
-                    <button type="button" className="ghost" onClick={() => goToReviewIndex(reviewIndex - 1)} disabled={reviewIndex === 0}>
-                      Previous
-                    </button>
-                    <button type="button" className="ghost" onClick={() => goToReviewIndex(reviewIndex + 1)} disabled={reviewIndex >= reviewItems.length - 1}>
-                      Next
-                    </button>
-                    <button className="submit" type="button" onClick={confirmAddToAnki} disabled={confirmingAdd}>
-                      {confirmingAdd ? 'Confirming...' : 'Confirm and Add Reviewed Notes to Anki'}
-                    </button>
-                  </div>
+                    </>
+                  ) : (
+                    <p className="hint">Review mode is enabled, but the reviewed card data has not loaded yet.</p>
+                  )}
                 </section>
               ) : null}
+
+              <div className="progress-meta">{progress.status} ({progress.completed}/{progress.total})</div>
+              <pre className="log-box">{(progress.log || []).map((line) => sanitizeLogLine(line)).join('\n')}</pre>
+              {result.message ? <p className="result-line">{result.message}</p> : null}
+              {result.summary ? <p className="result-line">{result.summary}</p> : null}
 
               {previewRows.length > 0 && !confirmationJobId ? (
                 <details className="advanced-block" open={formState.review_before_anki}>
@@ -497,7 +612,12 @@ export default function App() {
                       <div key={`${row.word}-${index}`} style={{marginBottom: '1rem', paddingBottom: '0.8rem', borderBottom: '1px solid #e2e8e2'}}>
                         <strong>{index + 1}. <span dangerouslySetInnerHTML={{__html: row.word}} /></strong><br />
                         <div style={{marginTop: '0.35rem'}}>
-                          <strong>Reading:</strong> {row.reading}
+                          <strong>Reading:</strong>
+                          {row.reading && row.reading.includes('<svg') ? (
+                            <div dangerouslySetInnerHTML={{__html: row.reading.replace(/color:#f5f5f5/g, 'color:#000000').replace(/fill:#f5f5f5/g, 'fill:#000000').replace(/stroke:#f5f5f5/g, 'stroke:#000000')}} />
+                          ) : (
+                            <span> {row.reading}</span>
+                          )}
                         </div>
                         <div style={{marginTop: '0.2rem'}}>
                           <strong>Meaning:</strong> {row.meaning}
