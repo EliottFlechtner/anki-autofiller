@@ -436,6 +436,69 @@ h3 {
   font-size: 0.87rem;
 }
 
+.input-output-card {
+  position: relative;
+}
+
+.card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.inbox-bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #c7d8cc;
+  border-radius: 999px;
+  background: #eef5ef;
+  color: #22493e;
+  width: 2.2rem;
+  height: 2.2rem;
+  padding: 0;
+}
+
+.inbox-bell-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.inbox-bell-count {
+  position: absolute;
+  top: -0.3rem;
+  right: -0.35rem;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 999px;
+  background: #1f5d4e;
+  color: #f6f8f7;
+  font-size: 0.7rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.2rem;
+}
+
+.inbox-overlay {
+  position: absolute;
+  top: 3rem;
+  right: 0.85rem;
+  width: min(360px, calc(100% - 1.7rem));
+  margin-top: 0.2rem;
+  border: 1px solid #dfe5df;
+  border-radius: 10px;
+  background: #f8fbf8;
+  padding: 0.65rem;
+  display: grid;
+  gap: 0.55rem;
+  z-index: 15;
+  box-shadow: 0 16px 28px rgba(31, 39, 36, 0.18);
+}
+
 .result-line {
   margin: 0.45rem 0 0;
   font-size: 0.92rem;
@@ -512,6 +575,10 @@ textarea {
   resize: vertical;
 }
 
+.words-textarea {
+  min-height: 250px;
+}
+
 .toggle-list {
   display: grid;
   gap: 0.45rem;
@@ -535,6 +602,24 @@ textarea {
   gap: 0.6rem;
   grid-template-columns: 1fr 1fr;
   align-items: end;
+}
+
+.pitch-theme-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.pitch-theme-label {
+  font-size: 0.91rem;
+  font-weight: 600;
+}
+
+.pitch-theme-select {
+  width: auto;
+  min-width: 84px;
+  padding: 0.42rem 0.48rem;
 }
 
 .advanced-block {
@@ -612,6 +697,16 @@ button:disabled {
   .grid.three,
   .inline-options {
     grid-template-columns: 1fr;
+  }
+
+  .inbox-overlay {
+    right: 0.75rem;
+    left: 0.75rem;
+    width: auto;
+  }
+
+  .pitch-theme-row {
+    align-items: end;
   }
 
   button.submit,
