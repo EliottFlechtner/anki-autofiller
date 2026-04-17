@@ -35,13 +35,33 @@ const CHECK_FIELDS = [
   'allow_duplicates',
 ];
 
+function parseBoolish(value, fallback = false) {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+      return true;
+    }
+    if (['0', 'false', 'no', 'off'].includes(normalized)) {
+      return false;
+    }
+  }
+  return fallback;
+}
+
 function buildInitialState(defaults) {
   const state = {};
   for (const key of TEXT_FIELDS) {
     state[key] = key in defaults ? String(defaults[key] ?? '') : '';
   }
   for (const key of CHECK_FIELDS) {
-    state[key] = Boolean(defaults[key]);
+    const fallback = key === 'review_before_anki';
+    state[key] = parseBoolish(defaults[key], fallback);
   }
   return state;
 }
@@ -73,11 +93,14 @@ export default function App() {
   const [result, setResult] = useState({message: '', summary: ''});
   const [previewRows, setPreviewRows] = useState([]);
   const [previewSentenceRows, setPreviewSentenceRows] = useState([]);
+  const [reviewItems, setReviewItems] = useState([]);
+  const [reviewChoices, setReviewChoices] = useState([]);
   const [confirmationJobId, setConfirmationJobId] = useState('');
   const [confirmingAdd, setConfirmingAdd] = useState(false);
   const [jobId, setJobId] = useState('');
   const [loadingPreset, setLoadingPreset] = useState(false);
   const [showOutputPath, setShowOutputPath] = useState(false);
+  const [showAnkiUrl, setShowAnkiUrl] = useState(false);
   const [ankiModels, setAnkiModels] = useState([]);
   const [ankiDecks, setAnkiDecks] = useState([]);
   const [loadingAnkiOptions, setLoadingAnkiOptions] = useState(false);
@@ -135,6 +158,8 @@ export default function App() {
           setResult({message: data.message || '', summary: data.anki_summary || ''});
           setPreviewRows(data.preview || []);
           setPreviewSentenceRows(data.sentence_preview || []);
+          setReviewItems(data.review_items || []);
+          setReviewChoices((data.review_items || []).map((item) => item.selected_index || 0));
           setConfirmationJobId(data.requires_confirmation ? jobId : '');
           setStatusText('Generation complete.');
           setJobId('');
@@ -144,6 +169,8 @@ export default function App() {
           setResult({message: `Error: ${data.error || 'unknown error'}`, summary: ''});
           setPreviewRows([]);
           setPreviewSentenceRows([]);
+          setReviewItems([]);
+          setReviewChoices([]);
           setConfirmationJobId('');
           setStatusText('Generation failed.');
           setJobId('');
@@ -210,6 +237,8 @@ export default function App() {
     setResult({message: '', summary: ''});
     setPreviewRows([]);
     setPreviewSentenceRows([]);
+    setReviewItems([]);
+    setReviewChoices([]);
     setConfirmationJobId('');
     setProgress({status: 'starting', completed: 0, total: 0, log: []});
     setStatusText('Starting generation...');
@@ -235,13 +264,19 @@ export default function App() {
     setConfirmingAdd(true);
     setStatusText('Submitting reviewed notes to Anki...');
     try {
-      const resp = await fetch(`/api/confirm/${confirmationJobId}`, {method: 'POST'});
+      const resp = await fetch(`/api/confirm/${confirmationJobId}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({choices: reviewChoices}),
+      });
       const payload = await resp.json();
       if (!resp.ok) {
         throw new Error(payload.error || 'confirm request failed');
       }
       setResult((prev) => ({...prev, summary: payload.anki_summary || prev.summary}));
       setConfirmationJobId('');
+      setReviewItems([]);
+      setReviewChoices([]);
       setStatusText('Reviewed notes were added to Anki.');
     } catch (error) {
       setStatusText(`Could not confirm add: ${error}`);
@@ -250,7 +285,7 @@ export default function App() {
     }
   }
 
-  async function refreshAnkiOptions() {
+  async function fetchAnkiOptions() {
     setLoadingAnkiOptions(true);
     try {
       const query = new URLSearchParams({anki_url: formState.anki_url || ''});
@@ -269,6 +304,35 @@ export default function App() {
     } finally {
       setLoadingAnkiOptions(false);
     }
+  }
+
+  useEffect(() => {
+    if (!formState.anki_connect) {
+      setAnkiModels([]);
+      setAnkiDecks([]);
+      return;
+    }
+    fetchAnkiOptions();
+  }, [formState.anki_connect, formState.anki_url, showAnkiUrl]);
+
+  function updateReviewChoice(rowIndex, selectedIndex) {
+    setReviewChoices((prev) => {
+      const next = [...prev];
+      next[rowIndex] = selectedIndex;
+      return next;
+    });
+  }
+
+  function selectedOptionForRow(rowIndex) {
+    const item = reviewItems[rowIndex];
+    if (!item || !item.options || item.options.length === 0) {
+      return null;
+    }
+    const selectedIndex = Number.isInteger(reviewChoices[rowIndex]) ? reviewChoices[rowIndex] : (item.selected_index || 0);
+    if (selectedIndex < 0 || selectedIndex >= item.options.length) {
+      return item.options[0];
+    }
+    return item.options[selectedIndex];
   }
 
   if (!bootLoaded) {
@@ -297,13 +361,37 @@ export default function App() {
 
               {previewRows.length > 0 ? (
                 <details className="advanced-block" open={formState.review_before_anki}>
-                  <summary>Generated card preview ({previewRows.length} shown)</summary>
-                  <div className="log-box" style={{maxHeight: '280px', overflow: 'auto'}}>
+                  <summary>Generated card preview ({previewRows.length} rows)</summary>
+                  <div className="log-box" style={{maxHeight: '420px', overflow: 'auto'}}>
                     {previewRows.map((row, index) => (
-                      <div key={`${row.word}-${index}`} style={{marginBottom: '0.7rem'}}>
-                        <strong>{index + 1}. {row.word}</strong><br />
-                        Reading: {row.reading}<br />
-                        Meaning: {row.meaning}
+                      <div key={`${row.word}-${index}`} style={{marginBottom: '1rem', paddingBottom: '0.8rem', borderBottom: '1px solid #e2e8e2'}}>
+                        <strong>{index + 1}. <span dangerouslySetInnerHTML={{__html: row.word}} /></strong><br />
+                        {reviewItems[index]?.options?.length > 0 ? (
+                          <label style={{marginTop: '0.4rem'}}>
+                            Definition choice
+                            <select
+                              value={reviewChoices[index] ?? reviewItems[index].selected_index ?? 0}
+                              onChange={(e) => updateReviewChoice(index, Number(e.target.value))}
+                            >
+                              {reviewItems[index].options.map((option, optionIndex) => (
+                                <option key={`${index}-${optionIndex}`} value={optionIndex}>
+                                  {option.meaning || '(blank meaning)'}{option.reading ? ` | ${option.reading}` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
+                        <div style={{marginTop: '0.35rem'}}>
+                          <strong>Reading:</strong>{' '}
+                          {selectedOptionForRow(index)?.reading_preview?.includes('<svg') ? (
+                            <span dangerouslySetInnerHTML={{__html: selectedOptionForRow(index)?.reading_preview || ''}} />
+                          ) : (
+                            selectedOptionForRow(index)?.reading_preview || row.reading
+                          )}
+                        </div>
+                        <div style={{marginTop: '0.2rem'}}>
+                          <strong>Meaning:</strong> {selectedOptionForRow(index)?.meaning || row.meaning}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -396,10 +484,10 @@ export default function App() {
                   </div>
 
                   <div className="inline-options">
-                    <label>Pitch SVG theme
+                    <label>Pitch SVG line/dot/text color
                       <select value={formState.pitch_accent_theme} onChange={(e) => updateField('pitch_accent_theme', e.target.value)} disabled={!formState.include_pitch_accent}>
-                        <option value="dark">dark</option>
-                        <option value="light">light</option>
+                        <option value="dark">Light lines (for dark backgrounds)</option>
+                        <option value="light">Dark lines (for light backgrounds)</option>
                       </select>
                     </label>
                     <label>Furigana format
@@ -409,6 +497,7 @@ export default function App() {
                       </select>
                     </label>
                   </div>
+                  <p className="hint">Theme only changes the SVG foreground (line, dots, text). The SVG background remains transparent.</p>
 
                   {formState.include_sentences ? (
                     <div className="inline-options">
@@ -433,40 +522,49 @@ export default function App() {
                   </label>
 
                   {formState.anki_connect ? (
-                    <button type="button" className="ghost" onClick={refreshAnkiOptions} disabled={loadingAnkiOptions}>
-                      {loadingAnkiOptions ? 'Loading Anki Lists...' : 'Load Model & Deck Lists'}
-                    </button>
-                  ) : null}
-
-                  {formState.anki_connect ? (
                     <>
+                      <label className="toggle">
+                        <input type="checkbox" checked={showAnkiUrl} onChange={(e) => setShowAnkiUrl(e.target.checked)} />
+                        Use custom AnkiConnect URL
+                      </label>
+
                       <div className="grid two">
-                        <label>AnkiConnect URL
-                          <input value={formState.anki_url} onChange={(e) => updateField('anki_url', e.target.value)} />
-                        </label>
+                        {showAnkiUrl ? (
+                          <label>AnkiConnect URL
+                            <input value={formState.anki_url} onChange={(e) => updateField('anki_url', e.target.value)} />
+                          </label>
+                        ) : null}
                         <label>Deck name (destination)
-                          <input list="deck-options" value={formState.deck_name} onChange={(e) => updateField('deck_name', e.target.value)} />
-                          <datalist id="deck-options">
-                            {ankiDecks.map((deck) => <option key={deck} value={deck} />)}
+                          <input
+                            value={formState.deck_name}
+                            onChange={(e) => updateField('deck_name', e.target.value)}
+                            list="deck-name-options"
+                          />
+                          <datalist id="deck-name-options">
+                            {[...new Set(ankiDecks)].filter(Boolean).map((deck) => (
+                              <option key={deck} value={deck} />
+                            ))}
                           </datalist>
                         </label>
                         <label>Model name
-                          <input list="model-options" value={formState.model_name} onChange={(e) => updateField('model_name', e.target.value)} />
-                          <datalist id="model-options">
-                            {ankiModels.map((model) => <option key={model} value={model} />)}
-                          </datalist>
+                          <select value={formState.model_name} onChange={(e) => updateField('model_name', e.target.value)}>
+                            {[...new Set([formState.model_name, ...ankiModels])].filter(Boolean).map((model) => (
+                              <option key={model} value={model}>{model}</option>
+                            ))}
+                          </select>
                         </label>
                         <label>Tags (comma-separated)
                           <input value={formState.tags} onChange={(e) => updateField('tags', e.target.value)} />
                         </label>
                       </div>
+                      {loadingAnkiOptions ? <p className="hint">Loading model/deck options from Anki...</p> : null}
                       <label className="toggle">
                         <input type="checkbox" checked={formState.allow_duplicates} onChange={(e) => updateField('allow_duplicates', e.target.checked)} />
                         Allow duplicates in Anki
                       </label>
                       <label className="toggle">
                         <input type="checkbox" checked={formState.review_before_anki} onChange={(e) => updateField('review_before_anki', e.target.checked)} />
-                        Review generated rows before sending to Anki
+                        Review generated rows before sending to Anki (default: on)
                       </label>
 
                       <details className="advanced-block">

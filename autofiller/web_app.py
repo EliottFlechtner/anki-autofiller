@@ -17,8 +17,10 @@ from .config import (
     load_settings,
 )
 from .io_utils import normalize_words, write_tsv
-from .models import CardRow, SentenceCardRow
+from .jisho_client import JishoClient
+from .models import CardRow, SearchCandidate, SentenceCardRow
 from .pipeline import build_rows
+from .pitch_accent import enrich_html_with_pitch
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 app = Flask(__name__, template_folder=str(ROOT_DIR / "templates"))
@@ -150,6 +152,82 @@ def _deserialize_sentence_rows(
         )
         for item in payload_rows
     ]
+
+
+def _to_hiragana(text: str) -> str:
+    """Convert Katakana in `text` to Hiragana, preserving other characters."""
+    chars: list[str] = []
+    for char in text:
+        code = ord(char)
+        if 0x30A1 <= code <= 0x30F6:
+            chars.append(chr(code - 0x60))
+        else:
+            chars.append(char)
+    return "".join(chars)
+
+
+def _build_review_items(
+    *,
+    words: list[str],
+    candidate_limit: int,
+    include_pitch_accent: bool,
+    pitch_accent_theme: str,
+    generated_rows: list[CardRow],
+) -> list[dict[str, Any]]:
+    """Build per-word candidate options used by web review-before-add workflow."""
+    client = JishoClient()
+    review_items: list[dict[str, Any]] = []
+
+    for index, word in enumerate(words):
+        candidates, _sentences = client.search(
+            word,
+            candidate_limit=max(candidate_limit, 1),
+            sentence_limit=0,
+        )
+        if not candidates:
+            candidates = [SearchCandidate(meaning="", reading="")]
+
+        options: list[dict[str, str]] = []
+        for candidate in candidates:
+            reading = _to_hiragana(candidate.reading)
+            reading_preview = reading
+            if include_pitch_accent:
+                pitch_html = enrich_html_with_pitch(
+                    word,
+                    reading,
+                    theme=pitch_accent_theme,
+                )
+                if pitch_html:
+                    reading_preview = pitch_html
+
+            options.append(
+                {
+                    "meaning": candidate.meaning,
+                    "reading": reading,
+                    "reading_preview": reading_preview,
+                }
+            )
+
+        selected_index = 0
+        if index < len(generated_rows):
+            generated_meaning = generated_rows[index].meaning
+            for opt_index, option in enumerate(options):
+                if option["meaning"] == generated_meaning:
+                    selected_index = opt_index
+                    break
+
+        review_items.append(
+            {
+                "word": (
+                    generated_rows[index].word if index < len(generated_rows) else word
+                ),
+                "source_word": word,
+                "options": options,
+                "selected_index": selected_index,
+            }
+        )
+
+    return review_items
 
 
 def _value_from_form(form_data: Mapping[str, str], key: str, default: str) -> str:
@@ -370,6 +448,13 @@ def _build_from_form(
         )
 
         if review_before_anki:
+            review_items = _build_review_items(
+                words=words,
+                candidate_limit=candidate_limit,
+                include_pitch_accent=include_pitch_accent,
+                pitch_accent_theme=pitch_accent_theme,
+                generated_rows=rows,
+            )
             anki_summary = "Review mode enabled: preview generated. Confirm to add these notes to Anki."
             return {
                 "rows": rows,
@@ -380,11 +465,13 @@ def _build_from_form(
                 "preset": preset_name,
                 "env_file": env_file,
                 "requires_confirmation": True,
+                "review_items": review_items,
                 "pending_add": {
                     "rows": _serialize_rows_preview(rows, limit=len(rows)),
                     "sentence_rows": _serialize_sentence_rows_preview(
                         sentence_rows, limit=len(sentence_rows)
                     ),
+                    "review_items": review_items,
                     "separate_sentence_cards": separate_sentence_cards,
                     "anki_url": anki_url,
                     "deck_name": deck_name,
@@ -441,6 +528,7 @@ def _build_from_form(
         "preset": preset_name,
         "env_file": env_file,
         "requires_confirmation": False,
+        "review_items": [],
     }
 
 
@@ -545,6 +633,7 @@ def _run_job(job_id: str, form_data: dict[str, str]) -> None:
             sentence_preview=_serialize_sentence_rows_preview(
                 result.get("sentence_rows", [])
             ),
+            review_items=result.get("review_items", []),
             preset=form_data.get("preset", ""),
             env_file=form_data.get("env_file", ""),
             requires_confirmation=bool(result.get("requires_confirmation", False)),
@@ -636,9 +725,59 @@ def api_confirm(job_id: str) -> Any:
         if not isinstance(pending_add, dict):
             return jsonify({"error": "no pending add payload"}), 400
 
+    request_body = request.get_json(silent=True) or {}
+    requested_choices = (
+        request_body.get("choices") if isinstance(request_body, dict) else None
+    )
+
     try:
         rows = _deserialize_card_rows(pending_add.get("rows", []))
         sentence_rows = _deserialize_sentence_rows(pending_add.get("sentence_rows", []))
+        review_items = pending_add.get("review_items", [])
+
+        if isinstance(requested_choices, list) and isinstance(review_items, list):
+            adjusted_rows: list[CardRow] = []
+            for index, row in enumerate(rows):
+                choice_value = (
+                    requested_choices[index] if index < len(requested_choices) else 0
+                )
+                try:
+                    selected_index = int(choice_value)
+                except (TypeError, ValueError):
+                    selected_index = 0
+
+                item = review_items[index] if index < len(review_items) else {}
+                options = item.get("options", []) if isinstance(item, dict) else []
+                if not isinstance(options, list) or not options:
+                    adjusted_rows.append(row)
+                    continue
+
+                if selected_index < 0 or selected_index >= len(options):
+                    selected_index = 0
+                selected_option = options[selected_index]
+                adjusted_rows.append(
+                    CardRow(
+                        word=row.word,
+                        meaning=str(selected_option.get("meaning", row.meaning)),
+                        reading=str(
+                            selected_option.get("reading_preview", row.reading)
+                        ),
+                    )
+                )
+
+                if index < len(sentence_rows):
+                    current_sentence_row = sentence_rows[index]
+                    updated_back = re.sub(
+                        r"Reading:\s*[^<]*",
+                        f"Reading: {str(selected_option.get('reading', ''))}",
+                        current_sentence_row.back,
+                    )
+                    sentence_rows[index] = SentenceCardRow(
+                        front=current_sentence_row.front,
+                        back=updated_back,
+                    )
+
+            rows = adjusted_rows
 
         success, failed = add_rows_to_anki(
             rows,

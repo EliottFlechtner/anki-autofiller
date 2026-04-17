@@ -26,7 +26,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "include_furigana": False,
     "furigana_format": "ruby",
     "anki_connect": True,
-    "review_before_anki": False,
+    "review_before_anki": True,
     "anki_url": "http://127.0.0.1:8765",
     "deck_name": DEFAULT_DECK_NAME,
     "model_name": DEFAULT_MODEL_NAME,
