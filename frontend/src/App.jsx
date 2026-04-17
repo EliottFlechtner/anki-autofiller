@@ -1005,10 +1005,7 @@ export default function App() {
                             >
                               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-hidden="true" focusable="false">
                                 <rect width="256" height="256" fill="none"/>
-                                <line x1="216" y1="56" x2="40" y2="56" strokeLinecap="round" strokeLinejoin="round" strokeWidth="12"/>
-                                <path d="M104,104v72a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm64,0v72a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z" fill="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="8"/>
-                                <path d="M180.88,56V40a16,16,0,0,0-16-16H92.12a16,16,0,0,0-16,16V56" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="12"/>
-                                <path d="M88,56V40a8,8,0,0,1,8-8h72a8,8,0,0,1,8,8V56M200,56v24a8,8,0,0,1-8,8H80a8,8,0,0,1-8-8V56" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="12"/>
+                                <path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM112,168a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm0-120H96V40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8Z" fill="currentColor"/>
                               </svg>
                             </button>
                           </div>
