@@ -663,58 +663,6 @@ export default function App() {
     return line.replace(/<!-- accent_start -->[\s\S]*?<!-- accent_end -->/g, '[pitch SVG omitted]');
   }
 
-  if (captureMode) {
-    return (
-      <div className="shell">
-        <main className="panel capture-panel">
-          <header className="hero">
-            <p className="eyebrow">Inbox Capture</p>
-            <h1>Save vocab from phone</h1>
-            <p className="sub">Send words now. Sync on PC later. No same-network requirement.</p>
-          </header>
-
-          <section className="card capture-card">
-            <form className="stack" onSubmit={submitCaptureToSupabase}>
-              <label className="full">Words / expressions (one per line)
-                <textarea value={captureText} onChange={(e) => setCaptureText(e.target.value)} placeholder={"団地\n通快\n頑張る"} rows={8} />
-              </label>
-
-              <label>Source tag
-                <input value={captureSource} onChange={(e) => setCaptureSource(e.target.value)} placeholder="phone" />
-              </label>
-
-              <button className="submit" type="submit" disabled={captureSubmitting}>
-                {captureSubmitting ? 'Saving...' : 'Save To Inbox'}
-              </button>
-            </form>
-
-            <div className="capture-hints">
-              <p className="hint">Setup needs Supabase URL + anon key in build env.</p>
-              <p className="hint">Use this page from GitHub Pages or any static host: add <code>?capture=1</code> to URL.</p>
-              <p className="hint">Example capture URL: <code>https://YOUR_SITE/?capture=1</code></p>
-            </div>
-
-            {captureStatus ? <p className="result-line">{captureStatus}</p> : null}
-
-            {!SUPABASE_URL || !SUPABASE_ANON_KEY ? (
-              <details className="advanced-block" open>
-                <summary>Missing Supabase config</summary>
-                <div className="hint-box">
-                  Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` before building the static capture site.
-                  Then enable RLS insert policy for pending inbox rows in Supabase.
-                </div>
-              </details>
-            ) : null}
-          </section>
-        </main>
-      </div>
-    );
-  }
-
-  if (!bootLoaded) {
-    return <div className="shell"><div className="status">Loading app...</div></div>;
-  }
-
   const showSentenceCardSettings = formState.include_sentences && formState.separate_sentence_cards;
   const reviewSectionVisible = formState.review_before_anki && previewRows.length > 0;
   const reviewSectionReady = reviewSectionVisible && reviewItems.length > 0;
@@ -793,6 +741,58 @@ export default function App() {
   const hasRowValidationIssues = reviewValidation.rowIssues.length > 0;
   const hasMappingValidationIssues = reviewValidation.mappingIssues.length > 0;
   const blocksSubmit = hasMappingValidationIssues || (!onlyAddValidRows && hasRowValidationIssues);
+
+  if (captureMode) {
+    return (
+      <div className="shell">
+        <main className="panel capture-panel">
+          <header className="hero">
+            <p className="eyebrow">Inbox Capture</p>
+            <h1>Save vocab from phone</h1>
+            <p className="sub">Send words now. Sync on PC later. No same-network requirement.</p>
+          </header>
+
+          <section className="card capture-card">
+            <form className="stack" onSubmit={submitCaptureToSupabase}>
+              <label className="full">Words / expressions (one per line)
+                <textarea value={captureText} onChange={(e) => setCaptureText(e.target.value)} placeholder={"団地\n通快\n頑張る"} rows={8} />
+              </label>
+
+              <label>Source tag
+                <input value={captureSource} onChange={(e) => setCaptureSource(e.target.value)} placeholder="phone" />
+              </label>
+
+              <button className="submit" type="submit" disabled={captureSubmitting}>
+                {captureSubmitting ? 'Saving...' : 'Save To Inbox'}
+              </button>
+            </form>
+
+            <div className="capture-hints">
+              <p className="hint">Setup needs Supabase URL + anon key in build env.</p>
+              <p className="hint">Use this page from GitHub Pages or any static host: add <code>?capture=1</code> to URL.</p>
+              <p className="hint">Example capture URL: <code>https://YOUR_SITE/?capture=1</code></p>
+            </div>
+
+            {captureStatus ? <p className="result-line">{captureStatus}</p> : null}
+
+            {!SUPABASE_URL || !SUPABASE_ANON_KEY ? (
+              <details className="advanced-block" open>
+                <summary>Missing Supabase config</summary>
+                <div className="hint-box">
+                  Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` before building the static capture site.
+                  Then enable RLS insert policy for pending inbox rows in Supabase.
+                </div>
+              </details>
+            ) : null}
+          </section>
+        </main>
+      </div>
+    );
+  }
+
+  if (!bootLoaded) {
+    return <div className="shell"><div className="status">Loading app...</div></div>;
+  }
 
   return (
     <div className="shell">
