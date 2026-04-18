@@ -103,6 +103,7 @@ export default function App() {
   const [addingBatchWords, setAddingBatchWords] = useState(new Set());
   const [confirmationJobId, setConfirmationJobId] = useState('');
   const [confirmingAdd, setConfirmingAdd] = useState(false);
+  const [onlyAddValidRows, setOnlyAddValidRows] = useState(true);
   const [jobId, setJobId] = useState('');
 
   const [showAnkiUrl, setShowAnkiUrl] = useState(false);
@@ -471,7 +472,10 @@ export default function App() {
       const resp = await fetch(`/api/confirm/${confirmationJobId}`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({choices: reviewChoices}),
+        body: JSON.stringify({
+          choices: reviewChoices,
+          only_add_valid_rows: onlyAddValidRows,
+        }),
       });
       const payload = await resp.json();
       if (!resp.ok) {
@@ -522,10 +526,13 @@ export default function App() {
   }, [confirmationJobId, formState.review_before_anki, reviewItems.length, reviewChoices.length]);
 
   useEffect(() => {
-    if (confirmationJobId && !formState.review_before_anki && reviewItems.length > 0 && reviewChoices.length > 0) {
-      confirmAddToAnki();
+    if (!formState.anki_connect) {
+      setAnkiModels([]);
+      setAnkiDecks([]);
+      return;
     }
-  }, [confirmationJobId, formState.review_before_anki, reviewItems.length, reviewChoices.length]);
+    fetchAnkiOptions();
+  }, [formState.anki_connect, formState.anki_url, showAnkiUrl]);
 
   useEffect(() => {
     fetchInboxPending({silent: true});
@@ -711,6 +718,81 @@ export default function App() {
   const showSentenceCardSettings = formState.include_sentences && formState.separate_sentence_cards;
   const reviewSectionVisible = formState.review_before_anki && previewRows.length > 0;
   const reviewSectionReady = reviewSectionVisible && reviewItems.length > 0;
+  const reviewValidation = useMemo(() => {
+    const mappingIssues = [];
+    if (formState.anki_connect) {
+      if (!String(formState.field_word || '').trim()) {
+        mappingIssues.push('Word field mapping is empty.');
+      }
+      if (!String(formState.field_meaning || '').trim()) {
+        mappingIssues.push('Meaning field mapping is empty.');
+      }
+      if (!String(formState.field_reading || '').trim()) {
+        mappingIssues.push('Reading field mapping is empty.');
+      }
+      if (showSentenceCardSettings) {
+        if (!String(formState.sentence_front_field || '').trim()) {
+          mappingIssues.push('Sentence front field mapping is empty.');
+        }
+        if (!String(formState.sentence_back_field || '').trim()) {
+          mappingIssues.push('Sentence back field mapping is empty.');
+        }
+      }
+    }
+
+    const rowIssues = [];
+    for (let index = 0; index < reviewItems.length; index += 1) {
+      const item = reviewItems[index] || {};
+      const options = Array.isArray(item.options) ? item.options : [];
+      if (options.length === 0) {
+        rowIssues.push({
+          index,
+          word: String(item.source_word || item.word || `Row ${index + 1}`),
+          reasons: ['no candidate options'],
+        });
+        continue;
+      }
+
+      const selectedIndexRaw = Number.isInteger(reviewChoices[index])
+        ? reviewChoices[index]
+        : (item.selected_index || 0);
+      const selectedIndex = (selectedIndexRaw >= 0 && selectedIndexRaw < options.length)
+        ? selectedIndexRaw
+        : 0;
+      const selectedOption = options[selectedIndex] || {};
+
+      const reasons = [];
+      if (!String(selectedOption.meaning || '').trim()) {
+        reasons.push('missing meaning');
+      }
+      if (!String(selectedOption.reading || '').trim()) {
+        reasons.push('missing reading');
+      }
+
+      if (reasons.length > 0) {
+        rowIssues.push({
+          index,
+          word: String(item.source_word || item.word || `Row ${index + 1}`),
+          reasons,
+        });
+      }
+    }
+
+    return {mappingIssues, rowIssues};
+  }, [
+    formState.anki_connect,
+    formState.field_word,
+    formState.field_meaning,
+    formState.field_reading,
+    formState.sentence_front_field,
+    formState.sentence_back_field,
+    showSentenceCardSettings,
+    reviewItems,
+    reviewChoices,
+  ]);
+  const hasRowValidationIssues = reviewValidation.rowIssues.length > 0;
+  const hasMappingValidationIssues = reviewValidation.mappingIssues.length > 0;
+  const blocksSubmit = hasMappingValidationIssues || (!onlyAddValidRows && hasRowValidationIssues);
 
   return (
     <div className="shell">
@@ -837,7 +919,48 @@ export default function App() {
                         <button type="button" className="ghost" onClick={() => goToReviewIndex(reviewIndex + 1)} disabled={reviewIndex >= reviewItems.length - 1}>
                           Next
                         </button>
-                        <button className="submit" type="button" onClick={confirmAddToAnki} disabled={confirmingAdd || !confirmationJobId}>
+                        <div className="review-submit-options">
+                          <label className="toggle">
+                            <input
+                              type="checkbox"
+                              checked={onlyAddValidRows}
+                              onChange={(e) => setOnlyAddValidRows(e.target.checked)}
+                            />
+                            Only add valid rows (skip invalid)
+                          </label>
+                          {hasMappingValidationIssues || hasRowValidationIssues ? (
+                            <div className="review-validation">
+                              <strong>Validation warnings before submit:</strong>
+                              {hasMappingValidationIssues ? (
+                                <ul className="review-validation-list">
+                                  {reviewValidation.mappingIssues.map((issue, idx) => (
+                                    <li key={`mapping-${idx}`}>{issue}</li>
+                                  ))}
+                                </ul>
+                              ) : null}
+                              {hasRowValidationIssues ? (
+                                <ul className="review-validation-list">
+                                  {reviewValidation.rowIssues.map((issue) => (
+                                    <li key={`row-${issue.index}`}>
+                                      <button
+                                        type="button"
+                                        className="ghost"
+                                        onClick={() => goToReviewIndex(issue.index)}
+                                      >
+                                        Row {issue.index + 1} ({issue.word})
+                                      </button>
+                                      : {issue.reasons.join(', ')}
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : null}
+                              {blocksSubmit ? (
+                                <p className="hint">Fix highlighted issues or enable "Only add valid rows" to continue.</p>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                        <button className="submit" type="button" onClick={confirmAddToAnki} disabled={confirmingAdd || !confirmationJobId || blocksSubmit}>
                           {confirmingAdd ? 'Confirming...' : 'Confirm and Add Reviewed Notes to Anki'}
                         </button>
                       </div>

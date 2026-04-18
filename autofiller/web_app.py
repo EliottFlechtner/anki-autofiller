@@ -842,6 +842,20 @@ def api_confirm(job_id: str) -> Any:
     requested_choices = (
         request_body.get("choices") if isinstance(request_body, dict) else None
     )
+    only_add_valid_rows_raw = (
+        request_body.get("only_add_valid_rows")
+        if isinstance(request_body, dict)
+        else False
+    )
+    if isinstance(only_add_valid_rows_raw, str):
+        only_add_valid_rows = only_add_valid_rows_raw.strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+    else:
+        only_add_valid_rows = bool(only_add_valid_rows_raw)
 
     try:
         rows = _deserialize_card_rows(pending_add.get("rows", []))
@@ -892,17 +906,83 @@ def api_confirm(job_id: str) -> Any:
 
             rows = adjusted_rows
 
-        success, failed = add_rows_to_anki(
-            rows,
-            url=str(pending_add.get("anki_url", "")),
-            deck_name=str(pending_add.get("deck_name", "")),
-            model_name=str(pending_add.get("model_name", "")),
-            word_field=str(pending_add.get("field_word", "Word")),
-            meaning_field=str(pending_add.get("field_meaning", "Translation")),
-            reading_field=str(pending_add.get("field_reading", "Reading")),
-            tags=list(pending_add.get("tags", [])),
-            allow_duplicates=bool(pending_add.get("allow_duplicates", False)),
-        )
+        mapping_issues: list[str] = []
+        if not str(pending_add.get("field_word", "")).strip():
+            mapping_issues.append("Word field mapping is empty.")
+        if not str(pending_add.get("field_meaning", "")).strip():
+            mapping_issues.append("Meaning field mapping is empty.")
+        if not str(pending_add.get("field_reading", "")).strip():
+            mapping_issues.append("Reading field mapping is empty.")
+
+        separate_sentence_cards = bool(pending_add.get("separate_sentence_cards"))
+        if separate_sentence_cards:
+            if not str(pending_add.get("sentence_front_field", "")).strip():
+                mapping_issues.append("Sentence front field mapping is empty.")
+            if not str(pending_add.get("sentence_back_field", "")).strip():
+                mapping_issues.append("Sentence back field mapping is empty.")
+
+        row_issues: list[dict[str, Any]] = []
+        valid_indexes: list[int] = []
+        skipped_reason_counts: dict[str, int] = {}
+        for index, row in enumerate(rows):
+            reasons: list[str] = []
+            if not str(row.meaning).strip():
+                reasons.append("missing meaning")
+            if not str(row.reading).strip():
+                reasons.append("missing reading")
+
+            if reasons:
+                row_issues.append(
+                    {
+                        "index": index,
+                        "word": row.word,
+                        "reasons": reasons,
+                    }
+                )
+                for reason in reasons:
+                    skipped_reason_counts[reason] = (
+                        skipped_reason_counts.get(reason, 0) + 1
+                    )
+            else:
+                valid_indexes.append(index)
+
+        if mapping_issues or (row_issues and not only_add_valid_rows):
+            return (
+                jsonify(
+                    {
+                        "error": "validation failed before submit",
+                        "validation": {
+                            "mapping": mapping_issues,
+                            "rows": row_issues,
+                        },
+                    }
+                ),
+                400,
+            )
+
+        skipped_rows_count = 0
+        if row_issues and only_add_valid_rows:
+            skipped_rows_count = len(row_issues)
+            rows = [rows[i] for i in valid_indexes]
+            if separate_sentence_cards:
+                sentence_rows = [
+                    sentence_rows[i] for i in valid_indexes if i < len(sentence_rows)
+                ]
+
+        if rows:
+            success, failed = add_rows_to_anki(
+                rows,
+                url=str(pending_add.get("anki_url", "")),
+                deck_name=str(pending_add.get("deck_name", "")),
+                model_name=str(pending_add.get("model_name", "")),
+                word_field=str(pending_add.get("field_word", "Word")),
+                meaning_field=str(pending_add.get("field_meaning", "Translation")),
+                reading_field=str(pending_add.get("field_reading", "Reading")),
+                tags=list(pending_add.get("tags", [])),
+                allow_duplicates=bool(pending_add.get("allow_duplicates", False)),
+            )
+        else:
+            success, failed = 0, 0
 
         summary = (
             f"Added {success} note(s) to Anki."
@@ -910,7 +990,16 @@ def api_confirm(job_id: str) -> Any:
             else "No notes were added to Anki."
         )
 
-        if pending_add.get("separate_sentence_cards"):
+        if skipped_rows_count > 0:
+            reason_parts = ", ".join(
+                f"{reason}={count}"
+                for reason, count in sorted(skipped_reason_counts.items())
+            )
+            summary += f" Skipped {skipped_rows_count} invalid row(s)" + (
+                f" ({reason_parts})." if reason_parts else "."
+            )
+
+        if pending_add.get("separate_sentence_cards") and sentence_rows:
             sent_success, sent_failed = add_sentence_rows_to_anki(
                 sentence_rows,
                 url=str(pending_add.get("anki_url", "")),
@@ -939,7 +1028,13 @@ def api_confirm(job_id: str) -> Any:
         pending_add=None,
         anki_summary=summary,
     )
-    return jsonify({"anki_summary": summary})
+    return jsonify(
+        {
+            "anki_summary": summary,
+            "skipped_rows": skipped_rows_count,
+            "skipped_reasons": skipped_reason_counts,
+        }
+    )
 
 
 @app.get("/api/review-items/<job_id>")
