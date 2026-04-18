@@ -6,235 +6,57 @@
 [![Latest Release](https://img.shields.io/github/v/release/EliottFlechtner/Jisho2Anki?display_name=tag)](https://github.com/EliottFlechtner/Jisho2Anki/releases)
 [![GHCR Image](https://img.shields.io/badge/GHCR-ghcr.io%2Feliottflechtner%2Fjisho2anki-2ea44f)](https://ghcr.io/eliottflechtner/jisho2anki)
 
-Small tool to speed up Japanese vocab note creation for Anki.
+Jisho2Anki turns plain Japanese word lists into Anki-ready cards with much less manual work. It combines dictionary lookup, optional review, and export/import paths in one project so you can stay focused on learning rather than formatting notes.
 
-Input is a word list (one word per line). Output is cards with fields:
+## What it does
 
-1. `Word`
-2. `Translation`
-3. `Reading`
+- Builds vocab cards from one-word-per-line input.
+- Exports to TSV for standard Anki import workflows.
+- Optionally sends notes directly to desktop Anki with AnkiConnect.
+- Supports review-before-add so you can choose the best candidate per word.
+- Can enrich cards with:
+  - furigana
+  - Jisho example sentences
+  - pitch accent SVG rendering
+- Offers both CLI and Web UI, powered by the same core pipeline.
 
-For AnkiConnect mode, the generator now auto-creates and uses this note type when missing:
+## Default note model
 
-1. `Jisho2Anki::Vocab (Kanji-Reading-Translation)`
-2. Fields: `Word`, `Reading`, `Translation`
+When direct Anki mode is enabled, Jisho2Anki uses this model by default (and can auto-create it if missing):
 
-It can also:
+- Jisho2Anki::Vocab (Kanji-Reading-Translation)
 
-- append Jisho example sentences into `Meaning`
-- split Jisho examples into separate sentence cards
-- auto-generate pitch accent SVG and place it in `Reading` (image only)
-- add notes directly to Anki via AnkiConnect
-- run in either CLI mode or local web UI mode
-- use a React + Vite SPA frontend for the web UI
+Default fields:
 
-## Setup
+1. Word
+2. Reading
+3. Translation
+
+## Quick setup
+
+### Prerequisites
+
+- Python 3.12+
+- Node.js 20 LTS (for frontend build/dev)
+- Desktop Anki + AnkiConnect (for direct add mode)
+
+### Install dependencies
 
 ```bash
 python3 -m pip install -r requirements.txt
 ```
 
-For the web frontend bundle, also install the Node dependencies once:
+If you plan to use the web frontend locally:
 
 ```bash
 cd frontend
 npm install
+cd ..
 ```
 
-## Documentation
+## Run options
 
-- **[Getting Started](docs/README.md)** - Quick start guide
-- **[Contributing](docs/CONTRIBUTING.md)** - Development setup and guidelines
-- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
-- **[Project Structure](docs/PROJECT_STRUCTURE.md)** - Codebase architecture
-- **[Windows Development](docs/WINDOWS_DEV.md)** - Windows-specific setup and commands
-- **[Changelog](docs/CHANGELOG.md)** - Version history and releases
-
-## Docker Deployment Pipeline
-
-If you want the simplest launch path, use Docker Compose.
-
-1. Copy compose-specific env defaults:
-
-```bash
-cp .env.docker.example .env.docker
-```
-
-2. Start the service:
-
-```bash
-make up
-```
-
-3. Open:
-
-`http://127.0.0.1:5000` (or the `APP_PORT` you set in `.env.docker`)
-
-Useful commands:
-
-```bash
-./scripts/docker-logs.sh
-./scripts/docker-down.sh
-```
-
-Shortcuts with Make:
-
-```bash
-cp .env.docker.example .env.docker
-make up
-make logs
-make down
-```
-
-Additional targets:
-
-```bash
-make ps
-make config
-make dev-up
-make release-check
-make smoke
-make backup
-```
-
-What this pipeline gives you:
-
-- one-command startup (`docker-up.sh`)
-- container health checks via `/healthz`
-- persistent output in local `output/`
-- built-in host access to desktop AnkiConnect via `host.docker.internal`
-
-Image pinning:
-
-- set `ANKI_JISHO2ANKI_IMAGE_TAG` in `.env.docker` (for example `v0.1`) to lock deployment to a specific release image.
-- set `ANKI_JISHO2ANKI_IMAGE_TAG` in `.env.docker` (for example `v1.0.0`) to lock deployment to a specific release image.
-
-If Docker build fails at `pip install` with `Temporary failure in name resolution`, that is a Docker DNS/network issue. `docker-up.sh` now pulls a prebuilt image first, and if it must build locally it fails fast instead of hanging.
-
-Optional override in `.env.docker` when using a mirror/proxy:
-
-```bash
-PIP_INDEX_URL=https://pypi.org/simple
-# PIP_EXTRA_INDEX_URL=https://your-mirror/simple
-# PIP_RETRIES=1
-# PIP_TIMEOUT=15
-```
-
-`make up` behavior:
-
-- tries to start from an existing local image first (`--no-build`)
-- only builds when no local image is available
-- fails fast on pip DNS issues instead of hanging for a long time
-
-`make smoke` behavior:
-
-- starts the stack
-- validates `/healthz`
-- validates `/api/bootstrap`
-
-### Ops Runbook (Minimal)
-
-1. Start service: `make up`
-2. Verify quickly: `make smoke`
-3. View status: `make ps`
-4. Follow logs: `make logs`
-5. Backup latest TSV: `make backup`
-6. Stop service: `make down`
-
-- import pending inbox messages directly into the words list
-
-## Inbox Capture (Supabase + Phone)
-
-This project now uses a generic inbox. The phone writes words to Supabase, and the PC later syncs the inbox into the regular Jisho/Anki pipeline.
-
-### How it works
-
-1. Phone opens a capture page.
-2. Capture page writes rows to Supabase `inbox_items` table.
-3. PC opens the regular web app and clicks `Refresh Inbox` / `Import All Pending`.
-4. Imported items are added to the existing review-and-confirm flow.
-5. After successful add-to-Anki, imported inbox rows are marked `ankied` in Supabase.
-
-### What to set up in Supabase
-
-1. Create a Supabase project.
-2. Go to SQL Editor and create the table:
-
-```sql
-create table if not exists inbox_items (
-  id bigint generated by default as identity primary key,
-  text text not null,
-  source text not null default '',
-  received_at_ms bigint not null,
-  created_at_ms bigint not null,
-  status text not null default 'pending',
-  ankied_at_ms bigint
-);
-
-create index if not exists idx_inbox_items_status on inbox_items(status);
-```
-
-3. Turn on Row Level Security.
-4. Add an insert policy:
-
-```sql
-alter table inbox_items enable row level security;
-
-create policy "allow anon insert pending inbox"
-on inbox_items
-for insert
-to anon
-with check (status = 'pending');
-```
-
-If you want the capture page to read the inbox too, add a read policy for anon. If not, the PC app can still read via the service role key.
-
-### Backend env vars
-
-Set these on the PC side where Jisho2Anki runs:
-
-- `ANKI_JISHO2ANKI_SUPABASE_URL` - your Supabase project URL
-- `ANKI_JISHO2ANKI_SUPABASE_SERVICE_ROLE_KEY` - service role key for PC sync
-- `ANKI_JISHO2ANKI_INBOX_TABLE` - optional, defaults to `inbox_items`
-
-### Phone capture page env vars
-
-When building the static capture page, set:
-
-- `VITE_SUPABASE_URL` - same Supabase project URL
-- `VITE_SUPABASE_ANON_KEY` - anon key for phone-side inserts
-- `VITE_SUPABASE_INBOX_TABLE` - optional, defaults to `inbox_items`
-
-### Phone setup
-
-1. Build and publish the frontend as a static site, or host the capture page on GitHub Pages.
-2. Open the capture page with `?capture=1`.
-3. Paste words, one per line.
-4. Tap Save To Inbox.
-5. Later, on PC, open the normal app and click Refresh Inbox, then Import All Pending.
-
-Example capture URL:
-
-```text
-https://YOUR_SITE/?capture=1
-```
-
-### Hosting notes
-
-GitHub Pages is enough for the phone capture page because it is static.
-The PC app still needs the Flask backend locally or on any simple host you already control.
-
-If you do not want any public Flask host, keep the backend local and only use GitHub Pages for the capture page plus Supabase for storage.
-
-```bash
-python3 jisho2anki.py --env-file configs/my-run.env --anki-connect
-```
-
-The web app uses the same settings loader. In the browser, clicking `Load preset defaults` or changing the preset/env file repopulates the visible fields with the merged settings. The values currently shown in the form are the values that get submitted. If you edit a field after loading a preset, that manual edit wins for that submission.
-
-In other words, the preset is a template for the visible form, not a hidden mode. The fields stay editable, and the final submission always uses whatever is visible when you click `Generate Cards`.
-
-## Quick Start (Web UI)
+### Web UI (recommended)
 
 ```bash
 python3 web_app.py
@@ -242,127 +64,13 @@ python3 web_app.py
 
 Open: `http://127.0.0.1:5000`
 
-If you want Vite-managed frontend editing with live browser updates, the easiest path is the launcher script:
+The web app is best if you want visual review, easier option toggles, and inline preview before confirmation.
 
-```bash
-./.venv/bin/python scripts/dev.py
-```
+### CLI
 
-Open: the Flask URL printed by the launcher output (for example `http://127.0.0.1:57581`).
-
-This starts Vite on a free local port and launches Flask with the matching dev-server URL already wired up. If you want to run the pieces manually, use `cd frontend && npm run dev` in one terminal and point `ANKI_JISHO2ANKI_VITE_DEV_SERVER_URL` at the Vite port in another.
-
-The launcher also picks a free Flask port automatically, so it avoids the common "port already in use" startup failure.
-
-For the normal static build, run `cd frontend && npm run build` before starting Flask.
-
-Static pipeline summary:
-
-```bash
-cd frontend && npm run build
-cd ..
-python3 web_app.py
-```
-
-When you run `python3 web_app.py`, open `http://127.0.0.1:5000`. When you run `scripts/dev.py`, use the Flask URL printed in the launcher output.
-
-The web page can:
-
-- save a TSV file
-- optionally push notes directly to Anki through AnkiConnect
-- auto-create and use a dedicated Jisho2Anki vocab note type by default
-- keep pitch accent generation on by default
-- load preset defaults into the visible form with a single click
-- import pending inbox messages directly into the words list
-
-## Inbox Capture (Supabase + Phone)
-
-This project now uses a generic inbox. The phone writes words to Supabase, and the PC later syncs the inbox into the regular Jisho/Anki pipeline.
-
-### How it works
-
-1. Phone opens a small capture page.
-2. Capture page writes rows to Supabase `inbox_items` table.
-3. PC opens the regular web app and clicks `Refresh Inbox` / `Import All Pending`.
-4. Imported items are added to the existing review-and-confirm flow.
-5. After successful add-to-Anki, imported inbox rows are marked `ankied` in Supabase.
-
-### What to set up in Supabase
-
-1. Create a Supabase project.
-2. Go to SQL Editor and create the table:
-
-```sql
-create table if not exists inbox_items (
-  id bigint generated by default as identity primary key,
-  text text not null,
-  source text not null default '',
-  received_at_ms bigint not null,
-  created_at_ms bigint not null,
-  status text not null default 'pending',
-  ankied_at_ms bigint
-);
-
-create index if not exists idx_inbox_items_status on inbox_items(status);
-```
-
-3. Turn on Row Level Security.
-4. Add policies:
-
-```sql
-alter table inbox_items enable row level security;
-
-create policy "allow anon insert pending inbox"
-on inbox_items
-for insert
-to anon
-with check (status = 'pending');
-```
-
-If you want the phone capture page to read pending rows too, add a read policy for anon. If you keep phone capture insert-only, the PC app can still read via the service role key.
-
-### Backend env vars
-
-Set these on the PC side where Jisho2Anki runs:
-
-- `ANKI_JISHO2ANKI_SUPABASE_URL` - your Supabase project URL
-- `ANKI_JISHO2ANKI_SUPABASE_SERVICE_ROLE_KEY` - service role key for PC sync
-- `ANKI_JISHO2ANKI_INBOX_TABLE` - optional, defaults to `inbox_items`
-
-### Phone capture page env vars
-
-When building the static capture page, set:
-
-- `VITE_SUPABASE_URL` - same Supabase project URL
-- `VITE_SUPABASE_ANON_KEY` - anon key for phone-side inserts
-- `VITE_SUPABASE_INBOX_TABLE` - optional, defaults to `inbox_items`
-
-### Phone setup
-
-1. Build and publish the frontend as a static site, or host the capture page on GitHub Pages.
-2. Open the capture page with `?capture=1`.
-3. Paste words, one per line.
-4. Tap Save To Inbox.
-5. Later, on PC, open the normal app and click Refresh Inbox, then Import All Pending.
-
-Example capture URL:
+Create an input file:
 
 ```text
-https://YOUR_SITE/?capture=1
-```
-
-### Hosting notes
-
-GitHub Pages is enough for the phone capture page because it is static.
-The PC app still needs the Flask backend locally or on any simple host you already control.
-
-If you do not want any public Flask host, keep the backend local and only use GitHub Pages for the capture page plus Supabase for storage.
-
-## Quick Start (CLI)
-
-Create `words.txt`:
-
-```txt
 食べる
 勉強
 試合
@@ -374,42 +82,7 @@ Generate TSV:
 python3 jisho2anki.py --input words.txt --output anki_import.tsv --include-header
 ```
 
-Using config defaults from `.env` or a preset:
-
-```bash
-python3 jisho2anki.py --preset balanced --anki-connect
-```
-
-Interactive candidate review (CLI only):
-
-```bash
-python3 jisho2anki.py --input words.txt --output anki_import.tsv --interactive-review --sentence-count 2
-```
-
-Pitch accent is on by default in both CLI and web mode. Use `--no-pitch-accent` to disable it.
-
-To keep answers short, use `--separate-sentence-cards` so sentence examples are created as separate notes.
-
-## AnkiConnect Setup (What To Do)
-
-AnkiConnect talks to the desktop Anki app locally, so you do not need to provide a mail/password in an `.env` file for this workflow.
-
-1. Open Anki.
-2. Go to `Tools -> Add-ons -> Get Add-ons...`.
-3. Install AnkiConnect with code `2055492159`.
-4. Restart Anki.
-5. Keep Anki open while running this tool.
-6. On first run, the app will create `Jisho2Anki::Vocab (Kanji-Reading-Translation)` automatically if needed.
-
-Optional connection check from terminal:
-
-```bash
-curl -s http://127.0.0.1:8765 -X POST -d '{"action":"version","version":6}'
-```
-
-If it returns a JSON result, AnkiConnect is reachable.
-
-## Direct Add To Anki (CLI)
+Direct add to Anki:
 
 ```bash
 python3 jisho2anki.py \
@@ -417,46 +90,95 @@ python3 jisho2anki.py \
   --output anki_import.tsv \
   --anki-connect \
   --deck-name "Example" \
-  --model-name "Jisho2Anki::Vocab (Kanji-Reading-Translation)" \
-  --field-word "Word" \
-  --field-meaning "Translation" \
-  --field-reading "Reading" \
-  --tags "jp,vocab,autofill"
+  --model-name "Jisho2Anki::Vocab (Kanji-Reading-Translation)"
 ```
 
-The docs and example config use the `Example` deck and the model `Jisho2Anki::Vocab (Kanji-Reading-Translation)`.
+### Docker
 
-For a complete end-to-end example that creates and fills a new deck named `Example`, see `EXAMPLE.md`.
+```bash
+cp .env.docker.example .env.docker
+make up
+```
 
-## Pitch Accent Add-On
+Open: `http://127.0.0.1:5000`
 
-Your installed add-on exposes a `Pitch Accent` menu in Anki and an editor toolbar button.
+Useful commands:
 
-- For bulk processing, use `Tools -> Pitch Accent -> bulk add` and point it at the deck/model after import.
-- For one-off edits, open a note in the editor and use the pitch accent toolbar icon.
-- The generator now reproduces that output by embedding the pitch accent SVG directly into the Reading field, so the add-on is optional after import.
+```bash
+make logs
+make smoke
+make down
+```
 
-## Project Structure
+## AnkiConnect setup (for direct add)
 
-- `autofiller/`: core package with CLI, web app, and service modules
-- `jisho2anki.py`: primary CLI entrypoint
-- `anki_autofiller.py`: backward-compatible CLI alias
-- `cli.py`: backward-compatible CLI wrapper
-- `web_app.py`: backward-compatible web wrapper
-- `templates/spa.html`: React SPA mount page
-- `frontend/`: Vite + React source and build config
-- `scripts/dev.py`: one-command local dev launcher (Vite + Flask)
-- `Dockerfile`: container image definition
-- `docker-compose.yml`: default deployment stack
-- `docker-compose.dev.yml`: bind-mounted dev container stack
-- `scripts/docker-up.sh`: one-command Docker startup
-- `scripts/docker-down.sh`: stop/remove Docker stack
-- `scripts/docker-logs.sh`: follow container logs
-- `presets/`: reusable env-style config presets
+1. Open desktop Anki.
+2. Go to Tools -> Add-ons -> Get Add-ons.
+3. Install AnkiConnect with code `2055492159`.
+4. Restart Anki.
+5. Keep Anki running while using Jisho2Anki.
+
+Optional connection test:
+
+```bash
+curl -s http://127.0.0.1:8765 -X POST -d '{"action":"version","version":6}'
+```
+
+## Web workflow at a glance
+
+1. Paste words into the main input area.
+2. Pick options (sentences/furigana/pitch/review).
+3. Click Generate Cards.
+4. In review mode, choose candidates per row.
+5. Confirm and add to Anki or export via TSV.
+
+## Review and quality controls
+
+- Review queue supports per-row meaning/reading choice.
+- Related words can be added into the current review batch.
+- Validation runs before final confirmation and can skip invalid rows when enabled.
+- Row order is preserved from input through submission.
+
+## Performance tuning
+
+Jisho2Anki exposes performance settings in CLI and Web UI, including `max_workers`, `candidate_limit`, and pause controls.
+
+Practical guidance:
+
+- Increase `max_workers` for larger batches.
+- Lower `candidate_limit` when speed matters more than choice variety.
+- Keep pause at `0` for fastest runs.
+
+Recent versions also apply worker parallelism to review generation, not only initial row building.
+
+## Inbox support
+
+The project includes an inbox flow for collecting words and importing pending items into the main generation/review pipeline.
+
+This README intentionally stays focused on core project usage. For environment-specific inbox hosting/configuration details, see the documentation links below.
+
+## Project structure
+
+- autofiller/: Core Python package (config, pipeline, web API, integrations)
+- frontend/: React + Vite SPA
+- templates/: SPA shell template
+- tests/: Unit and API regression tests
+- config/: Docker/deployment configuration
+- docs/: Guides, troubleshooting, standards, and changelog
+
+## Documentation
+
+- [Getting Started](docs/README.md)
+- [Example Workflow](docs/EXAMPLE.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Project Structure](docs/PROJECT_STRUCTURE.md)
+- [Contributing](docs/CONTRIBUTING.md)
+- [Windows Development](docs/WINDOWS_DEV.md)
+- [Release Standards](docs/RELEASE_STANDARDS.md)
+- [Changelog](docs/CHANGELOG.md)
 
 ## Notes
 
-- Meanings/readings are fetched from Jisho's public API.
-- Example sentences are parsed from Jisho search result HTML.
-- If a word is not found, fields are left blank except `Word`.
-- Duplicate words are automatically removed while preserving first-seen order.
+- Meanings/readings are fetched from Jisho lookups.
+- If no match is found, non-word fields may remain blank.
+- Duplicate input words are removed while preserving first-seen order.
