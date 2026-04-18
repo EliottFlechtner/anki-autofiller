@@ -110,6 +110,31 @@ make smoke
 make down
 ```
 
+### If your web app is reachable from other machines
+
+If port `5000` (or your configured `APP_PORT`) is exposed beyond localhost/LAN, protect the UI/API with HTTP Basic Auth:
+
+```env
+ANKI_JISHO2ANKI_WEB_AUTH_USERNAME=admin
+ANKI_JISHO2ANKI_WEB_AUTH_PASSWORD=use-a-long-random-password
+```
+
+Then restart the stack (`make down && make up`).
+
+Optional phone/IP allowlist:
+
+```env
+ANKI_JISHO2ANKI_ALLOWED_IPS=203.0.113.24
+```
+
+Only requests from listed IPs will be accepted (except `/healthz`).
+
+Recommended hardening in addition to app auth:
+
+- Put the app behind a reverse proxy with TLS.
+- Restrict inbound traffic by IP/firewall when possible.
+- Avoid publishing the port directly to the public internet.
+
 ## AnkiConnect setup (for direct add)
 
 1. Open desktop Anki.

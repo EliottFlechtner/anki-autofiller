@@ -3,6 +3,7 @@ import {useEffect, useMemo, useState} from 'react';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 const SUPABASE_INBOX_TABLE = import.meta.env.VITE_SUPABASE_INBOX_TABLE || 'inbox_items';
+const CAPTURE_KEY = import.meta.env.VITE_CAPTURE_KEY || '';
 
 const TEXT_FIELDS = [
   'words',
@@ -88,7 +89,10 @@ function toFormData(formState) {
 }
 
 export default function App() {
-  const captureMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('capture') === '1';
+  const captureParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const captureMode = captureParams?.get('capture') === '1';
+  const captureRequestKey = (captureParams?.get('k') || '').trim();
+  const captureAuthorized = !captureMode || !CAPTURE_KEY || captureRequestKey === CAPTURE_KEY;
   const [bootLoaded, setBootLoaded] = useState(false);
   const [formState, setFormState] = useState(() => buildInitialState({}));
   const [statusText, setStatusText] = useState('Bootstrapping settings...');
@@ -151,6 +155,11 @@ export default function App() {
 
   async function submitCaptureToSupabase(event) {
     event.preventDefault();
+    if (!captureAuthorized) {
+      setCaptureStatus('Capture is locked. Add the correct key in URL (?capture=1&k=...).');
+      return;
+    }
+
     const lines = String(captureText || '')
       .split('\n')
       .map((line) => line.trim())
@@ -743,6 +752,24 @@ export default function App() {
   const blocksSubmit = hasMappingValidationIssues || (!onlyAddValidRows && hasRowValidationIssues);
 
   if (captureMode) {
+    if (!captureAuthorized) {
+      return (
+        <div className="shell">
+          <main className="panel capture-panel">
+            <header className="hero">
+              <p className="eyebrow">Inbox Capture</p>
+              <h1>Capture is locked</h1>
+              <p className="sub">This page requires a valid capture key in the URL.</p>
+            </header>
+
+            <section className="card capture-card">
+              <p className="hint">Use <code>?capture=1&amp;k=YOUR_KEY</code>.</p>
+            </section>
+          </main>
+        </div>
+      );
+    }
+
     return (
       <div className="shell">
         <main className="panel capture-panel">
@@ -769,6 +796,7 @@ export default function App() {
 
             <div className="capture-hints">
               <p className="hint">Setup needs Supabase URL + anon key in build env.</p>
+              <p className="hint">Optional lock: set <code>VITE_CAPTURE_KEY</code> and open with <code>?capture=1&amp;k=YOUR_KEY</code>.</p>
               <p className="hint">Use this page from GitHub Pages or any static host: add <code>?capture=1</code> to URL.</p>
               <p className="hint">Example capture URL: <code>https://YOUR_SITE/?capture=1</code></p>
             </div>

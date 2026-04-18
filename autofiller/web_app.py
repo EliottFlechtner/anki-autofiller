@@ -7,11 +7,12 @@ import re
 import threading
 import uuid
 import copy
+import hmac
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Mapping
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 
 from .anki_connect_client import add_rows_to_anki, add_sentence_rows_to_anki, invoke
 from .config import (
@@ -56,9 +57,86 @@ def _runtime_env(name: str, default: str) -> str:
 
 DEFAULT_FLASK_HOST = _runtime_env("FLASK_HOST", "127.0.0.1")
 DEFAULT_FLASK_PORT = int(_runtime_env("FLASK_PORT", os.environ.get("PORT", "5000")))
+WEB_AUTH_USERNAME = _runtime_env("WEB_AUTH_USERNAME", "")
+WEB_AUTH_PASSWORD = _runtime_env("WEB_AUTH_PASSWORD", "")
+ALLOWED_IPS_RAW = _runtime_env("ALLOWED_IPS", "")
 
 JOBS: dict[str, dict[str, Any]] = {}
 JOB_LOCK = threading.Lock()
+
+
+def _allowed_ips() -> set[str]:
+    """Parse comma-separated allowed client IPs from runtime env."""
+    return {token.strip() for token in ALLOWED_IPS_RAW.split(",") if token.strip()}
+
+
+def _client_ip() -> str:
+    """Resolve best-effort client IP, honoring proxy-forwarded headers."""
+    forwarded_for = request.headers.get("X-Forwarded-For", "")
+    if forwarded_for.strip():
+        # Use left-most client IP when behind a trusted reverse proxy.
+        return forwarded_for.split(",", 1)[0].strip()
+    return request.remote_addr or ""
+
+
+def _web_auth_enabled() -> bool:
+    """Return whether HTTP basic auth is enabled via runtime env values."""
+    return bool(WEB_AUTH_USERNAME or WEB_AUTH_PASSWORD)
+
+
+def _unauthorized_response() -> Response:
+    """Return a standard HTTP basic-auth challenge response."""
+    return Response(
+        "Authentication required",
+        401,
+        {"WWW-Authenticate": 'Basic realm="Jisho2Anki", charset="UTF-8"'},
+    )
+
+
+def _is_authorized_request() -> bool:
+    """Validate incoming request credentials against configured basic auth values."""
+    auth = request.authorization
+    if not auth:
+        return False
+
+    if not hmac.compare_digest(auth.username or "", WEB_AUTH_USERNAME):
+        return False
+
+    if not hmac.compare_digest(auth.password or "", WEB_AUTH_PASSWORD):
+        return False
+
+    return True
+
+
+@app.before_request
+def _protect_with_optional_basic_auth() -> Response | None:
+    """Optionally require HTTP basic auth for all routes except health checks."""
+    if request.path == "/healthz":
+        return None
+
+    allowed_ips = _allowed_ips()
+    if allowed_ips:
+        client_ip = _client_ip()
+        if client_ip not in allowed_ips:
+            return Response(
+                "Access denied from this IP",
+                403,
+            )
+
+    if not _web_auth_enabled():
+        return None
+
+    # Treat partial auth config as invalid and deny access until fixed.
+    if not WEB_AUTH_USERNAME or not WEB_AUTH_PASSWORD:
+        return Response(
+            "Invalid auth configuration: set both WEB_AUTH_USERNAME and WEB_AUTH_PASSWORD",
+            503,
+        )
+
+    if _is_authorized_request():
+        return None
+
+    return _unauthorized_response()
 
 
 def _parse_inbox_item_ids(raw: str | None) -> list[int]:
