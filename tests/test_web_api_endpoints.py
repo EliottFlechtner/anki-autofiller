@@ -658,6 +658,68 @@ class WebApiEndpointTests(unittest.TestCase):
             'data-reading="かたかな"', item["related_words"][1]["reading_preview"]
         )
 
+    def test_build_from_form_forwards_max_workers_to_review_generation(self) -> None:
+        """Review generation should reuse the same max_workers performance setting."""
+        form_data = {
+            "words": "食べる\n勉強",
+            "anki_connect": "true",
+            "review_before_anki": "true",
+            "max_workers": "4",
+            "candidate_limit": "2",
+            "include_pitch_accent": "false",
+        }
+        default_settings = {
+            "pause_seconds": 0,
+            "candidate_limit": 3,
+            "sentence_count": 1,
+            "max_workers": 2,
+            "include_sentences": False,
+            "include_pitch_accent": False,
+            "pitch_accent_theme": "dark",
+            "include_furigana": False,
+            "furigana_format": "ruby",
+            "separate_sentence_cards": False,
+            "output_path": "output/test.tsv",
+            "include_header": False,
+            "review_before_anki": True,
+            "anki_connect": True,
+            "anki_url": "http://127.0.0.1:8765",
+            "deck_name": "Default",
+            "model_name": "Jisho2Anki::Vocab",
+            "field_word": "Word",
+            "field_meaning": "Translation",
+            "field_reading": "Reading",
+            "allow_duplicates": False,
+            "tags": "",
+            "sentence_deck_name": "Default",
+            "sentence_model_name": "Basic",
+            "sentence_front_field": "Front",
+            "sentence_back_field": "Back",
+        }
+
+        generated_rows = [
+            CardRow(word="食べる", meaning="to eat", reading="たべる"),
+            CardRow(word="勉強", meaning="study", reading="べんきょう"),
+        ]
+
+        with (
+            patch(
+                "autofiller.web_app._resolved_settings_for_request",
+                return_value=default_settings,
+            ),
+            patch("autofiller.web_app.build_rows", return_value=(generated_rows, [])),
+            patch("autofiller.web_app.write_tsv"),
+            patch(
+                "autofiller.web_app._build_review_items", return_value=[]
+            ) as review_mock,
+        ):
+            result = web_app_module._build_from_form(form_data, lambda _line: None)
+
+        self.assertTrue(result["requires_confirmation"])
+        review_mock.assert_called_once()
+        self.assertEqual(review_mock.call_args.kwargs["max_workers"], 4)
+        self.assertEqual(review_mock.call_args.kwargs["candidate_limit"], 2)
+
     def test_confirm_add_uses_distinct_choice_per_row(self) -> None:
         """Confirm endpoint must map each row to its own selected option, not reuse another row choice."""
         app = web_app_module.app

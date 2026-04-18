@@ -7,6 +7,7 @@ import re
 import threading
 import uuid
 import copy
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -200,12 +201,13 @@ def _build_review_items(
     include_pitch_accent: bool,
     pitch_accent_theme: str,
     generated_rows: list[CardRow],
+    max_workers: int = 1,
 ) -> list[dict[str, Any]]:
     """Build per-word candidate options used by web review-before-add workflow."""
-    client = JishoClient()
-    review_items: list[dict[str, Any]] = []
+    safe_workers = max(1, max_workers)
 
-    for index, word in enumerate(words):
+    def _build_single_item(index: int, word: str) -> dict[str, Any]:
+        client = JishoClient()
         candidates, related_candidates = client.search_review(
             word,
             candidate_limit=max(candidate_limit, 1),
@@ -242,37 +244,46 @@ def _build_review_items(
                     selected_index = opt_index
                     break
 
-        review_items.append(
-            {
-                "word": (
-                    generated_rows[index].word if index < len(generated_rows) else word
-                ),
-                "source_word": word,
-                "options": options,
-                "related_words": [
-                    {
-                        "word": str(item.get("word", "")),
-                        "meaning": str(item.get("meaning", "")),
-                        "reading": _to_hiragana(str(item.get("reading", ""))),
-                        "reading_preview": (
-                            enrich_html_with_pitch(
-                                str(item.get("word", "")),
-                                _to_hiragana(str(item.get("reading", ""))),
-                                theme=pitch_accent_theme,
-                            )
-                            if include_pitch_accent
-                            else _to_hiragana(str(item.get("reading", "")))
+        return {
+            "word": generated_rows[index].word if index < len(generated_rows) else word,
+            "source_word": word,
+            "options": options,
+            "related_words": [
+                {
+                    "word": str(item.get("word", "")),
+                    "meaning": str(item.get("meaning", "")),
+                    "reading": _to_hiragana(str(item.get("reading", ""))),
+                    "reading_preview": (
+                        enrich_html_with_pitch(
+                            str(item.get("word", "")),
+                            _to_hiragana(str(item.get("reading", ""))),
+                            theme=pitch_accent_theme,
                         )
-                        or _to_hiragana(str(item.get("reading", ""))),
-                    }
-                    for item in related_candidates
-                    if str(item.get("word", "")).strip()
-                ],
-                "selected_index": selected_index,
-            }
-        )
+                        if include_pitch_accent
+                        else _to_hiragana(str(item.get("reading", "")))
+                    )
+                    or _to_hiragana(str(item.get("reading", ""))),
+                }
+                for item in related_candidates
+                if str(item.get("word", "")).strip()
+            ],
+            "selected_index": selected_index,
+        }
 
-    return review_items
+    if safe_workers == 1 or len(words) <= 1:
+        return [_build_single_item(index, word) for index, word in enumerate(words)]
+
+    ordered_items: list[dict[str, Any] | None] = [None] * len(words)
+    with ThreadPoolExecutor(max_workers=min(safe_workers, len(words))) as executor:
+        futures = {
+            executor.submit(_build_single_item, index, word): index
+            for index, word in enumerate(words)
+        }
+        for future in as_completed(futures):
+            index = futures[future]
+            ordered_items[index] = future.result()
+
+    return [item for item in ordered_items if item is not None]
 
 
 def _value_from_form(form_data: Mapping[str, str], key: str, default: str) -> str:
@@ -501,6 +512,7 @@ def _build_from_form(
                 include_pitch_accent=include_pitch_accent,
                 pitch_accent_theme=pitch_accent_theme,
                 generated_rows=rows,
+                max_workers=max(1, max_workers),
             )
             anki_summary = "Review mode enabled: preview generated. Confirm to add these notes to Anki."
             return {
