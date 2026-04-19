@@ -26,7 +26,7 @@ def ensure_vocab_model(
 
     The generated model has two card templates so learners can practice both:
     - word -> reading + translation
-    - word + reading -> translation
+    - translation -> word + reading
     """
     existing = invoke(url, "modelNames", {})
     if isinstance(existing, list) and model_name in existing:
@@ -76,15 +76,13 @@ def ensure_vocab_model(
             ),
         },
         {
-            "Name": "Word+Reading -> Translation",
-            "Front": (
-                '<div class="word">' + word_ref + "</div>"
-                '<div class="reading">' + reading_ref + "</div>"
-            ),
+            "Name": "Translation -> Word+Reading",
+            "Front": ('<div class="meaning">' + meaning_ref + "</div>"),
             "Back": (
                 "{{FrontSide}}"
                 '<hr class="sep">'
-                '<div class="meaning">' + meaning_ref + "</div>"
+                '<div class="word">' + word_ref + "</div>"
+                '<div class="reading">' + reading_ref + "</div>"
             ),
         },
     ]

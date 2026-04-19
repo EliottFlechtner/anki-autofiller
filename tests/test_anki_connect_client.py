@@ -91,6 +91,22 @@ class AnkiConnectClientTests(unittest.TestCase):
             ["Word", "Reading", "Translation"],
         )
         self.assertEqual(len(create_model_params["cardTemplates"]), 2)
+        self.assertEqual(
+            create_model_params["cardTemplates"][1]["Name"],
+            "Translation -> Word+Reading",
+        )
+        self.assertIn(
+            '<div class="meaning">{{Translation}}</div>',
+            create_model_params["cardTemplates"][1]["Front"],
+        )
+        self.assertIn(
+            '<div class="word">{{Word}}</div>',
+            create_model_params["cardTemplates"][1]["Back"],
+        )
+        self.assertIn(
+            '<div class="reading">{{Reading}}</div>',
+            create_model_params["cardTemplates"][1]["Back"],
+        )
 
 
 if __name__ == "__main__":
