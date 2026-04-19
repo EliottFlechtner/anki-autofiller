@@ -178,6 +178,36 @@ def _job_update(job_id: str, **updates: Any) -> None:
             JOBS[job_id].update(updates)
 
 
+def _extract_inline_sentence_suffix(meaning: str) -> str:
+    """Return the inline sentence suffix appended by pipeline sentence formatting."""
+    marker = "<br><br>例文:"
+    idx = meaning.find(marker)
+    if idx < 0:
+        return ""
+    return meaning[idx:]
+
+
+def _sentence_row_source_word(back: str) -> str:
+    """Extract the source word marker from a sentence-row back field."""
+    match = re.search(r"Word:\s*(.*?)<br>Reading:", back)
+    if not match:
+        return ""
+    return str(match.group(1)).strip()
+
+
+def _update_sentence_row_reading(
+    *,
+    sentence_row: SentenceCardRow,
+    source_word: str,
+    reading: str,
+) -> SentenceCardRow:
+    """Update sentence-row reading for a specific source word marker."""
+    escaped_word = re.escape(source_word)
+    pattern = rf"(Word:\s*{escaped_word}<br>Reading:\s*)[^<]*"
+    updated_back = re.sub(pattern, rf"\1{reading}", sentence_row.back)
+    return SentenceCardRow(front=sentence_row.front, back=updated_back)
+
+
 def _build_review_items(
     *,
     words: list[str],
@@ -435,9 +465,15 @@ def _build_from_form(
                     ),
                     "review_items": copy.deepcopy(review_items),
                     "source_words": words,
+                    "pause_seconds": pause_seconds,
                     "candidate_limit": candidate_limit,
+                    "sentence_count": sentence_count,
+                    "include_sentences": include_sentences,
                     "include_pitch_accent": include_pitch_accent,
                     "pitch_accent_theme": pitch_accent_theme,
+                    "include_furigana": include_furigana,
+                    "furigana_format": furigana_format,
+                    "max_workers": max(1, max_workers),
                     "separate_sentence_cards": separate_sentence_cards,
                     "anki_url": anki_url,
                     "deck_name": deck_name,
@@ -776,6 +812,16 @@ def api_confirm(job_id: str) -> Any:
         rows = _deserialize_card_rows(pending_add.get("rows", []))
         sentence_rows = _deserialize_sentence_rows(pending_add.get("sentence_rows", []))
         review_items = pending_add.get("review_items", [])
+        source_words_for_rows_raw = pending_add.get("source_words", [])
+        source_words_for_rows = (
+            [str(item) for item in source_words_for_rows_raw]
+            if isinstance(source_words_for_rows_raw, list)
+            else []
+        )
+        if len(source_words_for_rows) < len(rows):
+            source_words_for_rows.extend(
+                [""] * (len(rows) - len(source_words_for_rows))
+            )
 
         if isinstance(requested_choices, list) and isinstance(review_items, list):
             adjusted_rows: list[CardRow] = []
@@ -797,27 +843,61 @@ def api_confirm(job_id: str) -> Any:
                 if selected_index < 0 or selected_index >= len(options):
                     selected_index = 0
                 selected_option = options[selected_index]
+                selected_meaning = str(selected_option.get("meaning", "")).strip()
+                inline_sentence_suffix = _extract_inline_sentence_suffix(
+                    str(row.meaning)
+                )
+                if selected_meaning and inline_sentence_suffix:
+                    selected_meaning = f"{selected_meaning}{inline_sentence_suffix}"
+                if not selected_meaning:
+                    selected_meaning = str(row.meaning)
                 adjusted_rows.append(
                     CardRow(
                         word=row.word,
-                        meaning=str(selected_option.get("meaning", row.meaning)),
+                        meaning=selected_meaning,
                         reading=str(
                             selected_option.get("reading_preview", row.reading)
                         ),
                     )
                 )
 
-                if index < len(sentence_rows):
-                    current_sentence_row = sentence_rows[index]
-                    updated_back = re.sub(
-                        r"Reading:\s*[^<]*",
-                        f"Reading: {str(selected_option.get('reading', ''))}",
-                        current_sentence_row.back,
-                    )
-                    sentence_rows[index] = SentenceCardRow(
-                        front=current_sentence_row.front,
-                        back=updated_back,
-                    )
+                if isinstance(item, dict):
+                    source_word = str(item.get("source_word", "")).strip()
+                    if source_word:
+                        source_words_for_rows[index] = source_word
+
+                if index < len(source_words_for_rows) and source_words_for_rows[index]:
+                    target_word = source_words_for_rows[index]
+                    selected_reading = str(selected_option.get("reading", ""))
+                    matched_any_sentence = False
+                    updated_sentence_rows: list[SentenceCardRow] = []
+                    for sentence_row in sentence_rows:
+                        if _sentence_row_source_word(sentence_row.back) == target_word:
+                            matched_any_sentence = True
+                            updated_sentence_rows.append(
+                                _update_sentence_row_reading(
+                                    sentence_row=sentence_row,
+                                    source_word=target_word,
+                                    reading=selected_reading,
+                                )
+                            )
+                        else:
+                            updated_sentence_rows.append(sentence_row)
+                    sentence_rows = updated_sentence_rows
+
+                    # Backward-compatible fallback for legacy sentence rows that do
+                    # not include "Word: ...<br>Reading:" markers.
+                    if not matched_any_sentence and index < len(sentence_rows):
+                        current_sentence_row = sentence_rows[index]
+                        updated_back = re.sub(
+                            r"Reading:\s*[^<]*",
+                            f"Reading: {selected_reading}",
+                            current_sentence_row.back,
+                        )
+                        sentence_rows[index] = SentenceCardRow(
+                            front=current_sentence_row.front,
+                            back=updated_back,
+                        )
 
             rows = adjusted_rows
 
@@ -879,9 +959,13 @@ def api_confirm(job_id: str) -> Any:
         if row_issues and only_add_valid_rows:
             skipped_rows_count = len(row_issues)
             rows = [rows[i] for i in valid_indexes]
+            source_words_for_rows = [source_words_for_rows[i] for i in valid_indexes]
             if separate_sentence_cards:
+                kept_sources = {source for source in source_words_for_rows if source}
                 sentence_rows = [
-                    sentence_rows[i] for i in valid_indexes if i < len(sentence_rows)
+                    sentence_row
+                    for sentence_row in sentence_rows
+                    if _sentence_row_source_word(sentence_row.back) in kept_sources
                 ]
 
         if rows:
@@ -1032,8 +1116,37 @@ def api_review_add_word(job_id: str) -> Any:
             return jsonify({"error": f"{word} is already in batch"}), 409
 
         candidate_limit = int(pending_add.get("candidate_limit", 1))
+        sentence_count = int(pending_add.get("sentence_count", 1))
+        include_sentences = bool(pending_add.get("include_sentences", False))
         include_pitch_accent = bool(pending_add.get("include_pitch_accent", False))
         pitch_accent_theme = str(pending_add.get("pitch_accent_theme", "dark"))
+        include_furigana = bool(pending_add.get("include_furigana", False))
+        furigana_format = str(pending_add.get("furigana_format", "ruby"))
+        separate_sentence_cards = bool(
+            pending_add.get("separate_sentence_cards", False)
+        )
+
+        generated_rows, generated_sentence_rows = build_rows(
+            words=[word],
+            pause_seconds=0,
+            candidate_limit=max(candidate_limit, 1),
+            sentence_count=max(sentence_count, 0),
+            include_sentences=include_sentences,
+            separate_sentence_cards=separate_sentence_cards,
+            include_pitch_accent=include_pitch_accent,
+            pitch_accent_theme=pitch_accent_theme,
+            include_furigana=include_furigana,
+            furigana_format=furigana_format,
+            max_workers=1,
+            interactive_review=False,
+            progress_printer=None,
+        )
+
+        generated_row = (
+            generated_rows[0]
+            if generated_rows
+            else CardRow(word=word, meaning="", reading="")
+        )
         review_items = _build_review_items(
             words=[word],
             candidate_limit=max(candidate_limit, 1),
@@ -1041,6 +1154,7 @@ def api_review_add_word(job_id: str) -> Any:
             pitch_accent_theme=pitch_accent_theme,
             generated_rows=[],
         )
+        used_fallback_review_item = False
         if review_items:
             review_item = review_items[0]
             selected_index = (
@@ -1049,6 +1163,7 @@ def api_review_add_word(job_id: str) -> Any:
                 else 0
             )
         else:
+            used_fallback_review_item = True
             review_item = {
                 "word": word,
                 "source_word": word,
@@ -1070,25 +1185,46 @@ def api_review_add_word(job_id: str) -> Any:
         selected_option = (
             options[selected_index] if isinstance(options, list) and options else {}
         )
+        selected_meaning = str(selected_option.get("meaning", "")).strip()
+        inline_sentence_suffix = _extract_inline_sentence_suffix(generated_row.meaning)
+        if selected_meaning and inline_sentence_suffix:
+            selected_meaning = f"{selected_meaning}{inline_sentence_suffix}"
+        if not selected_meaning:
+            selected_meaning = (
+                "" if used_fallback_review_item else generated_row.meaning
+            )
+
+        selected_reading = str(
+            selected_option.get("reading_preview", selected_option.get("reading", ""))
+        )
+        if not selected_reading:
+            selected_reading = (
+                "" if used_fallback_review_item else generated_row.reading
+            )
+
         pending_rows = pending_add.get("rows", [])
         if not isinstance(pending_rows, list):
             pending_rows = []
         pending_rows.append(
             {
-                "word": (
-                    str(review_item.get("word", word))
-                    if isinstance(review_item, dict)
-                    else word
-                ),
-                "meaning": str(selected_option.get("meaning", "")),
-                "reading": str(
-                    selected_option.get(
-                        "reading_preview", selected_option.get("reading", "")
-                    )
-                ),
+                "word": generated_row.word,
+                "meaning": selected_meaning,
+                "reading": selected_reading,
             }
         )
         pending_add["rows"] = pending_rows
+
+        if separate_sentence_cards and generated_sentence_rows:
+            pending_sentence_rows = pending_add.get("sentence_rows", [])
+            if not isinstance(pending_sentence_rows, list):
+                pending_sentence_rows = []
+            pending_sentence_rows.extend(
+                _serialize_sentence_rows_preview(
+                    generated_sentence_rows,
+                    limit=len(generated_sentence_rows),
+                )
+            )
+            pending_add["sentence_rows"] = pending_sentence_rows
 
         pending_review_items = pending_add.get("review_items", [])
         if not isinstance(pending_review_items, list):

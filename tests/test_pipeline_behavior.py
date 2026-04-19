@@ -27,10 +27,19 @@ class PipelineBehaviorTests(unittest.TestCase):
             ExampleSentence(japanese="食べる。", english="I eat."),
             ExampleSentence(japanese="勉強する。", english="I study."),
         ]
-        formatted = format_sentences(sentences)
-        self.assertIn("例文: 食べる。 - I eat.", formatted)
+        formatted = format_sentences(sentences, target_word="食べる")
+        self.assertIn(
+            '例文: <b style="color:#dc2626;">食べる</b>。 - I eat.',
+            formatted,
+        )
         self.assertIn("例文: 勉強する。 - I study.", formatted)
         self.assertIn("<br>", formatted)
+
+    def test_format_sentences_no_target_highlight_when_absent(self) -> None:
+        """Sentence formatting should leave Japanese untouched when target is absent."""
+        sentences = [ExampleSentence(japanese="勉強する。", english="I study.")]
+        formatted = format_sentences(sentences, target_word="食べる")
+        self.assertIn("例文: 勉強する。 - I study.", formatted)
 
     def test_default_interactive_selector_handles_retry_and_zero(self) -> None:
         """Selector should retry invalid input and allow explicit blank selection via `0`."""
@@ -131,6 +140,7 @@ class PipelineBehaviorTests(unittest.TestCase):
 
         self.assertEqual(row.meaning, "match")
         self.assertEqual(len(sentence_rows), 1)
+        self.assertIn('<b style="color:#dc2626;">試合</b>', sentence_rows[0].front)
         self.assertIn("Word: 試合", sentence_rows[0].back)
 
     def test_build_rows_preserves_input_order(self) -> None:

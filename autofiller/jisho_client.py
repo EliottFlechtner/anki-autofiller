@@ -232,6 +232,13 @@ class JishoClient:
         text = re.sub(r"\s+", " ", text)
         return text.strip()
 
+    def _strip_sentence_source(self, english: str) -> str:
+        """Remove trailing source-attribution suffix from an English sentence."""
+        # Typical scraped suffixes look like: "... — Jreibun".
+        # Keep this conservative: only strip short trailing labels preceded by spaced dash.
+        cleaned = re.sub(r"\s+[—―-]\s*[A-Za-z][A-Za-z0-9 ._]{1,60}$", "", english)
+        return cleaned.strip()
+
     def _extract_sentences(
         self, html_payload: str, limit: int
     ) -> list[ExampleSentence]:
@@ -260,7 +267,7 @@ class JishoClient:
                 r'<span class="furigana">.*?</span>', "", japanese_raw, flags=re.DOTALL
             )
             japanese = self._strip_tags(japanese_no_furigana)
-            english = self._strip_tags(english_raw)
+            english = self._strip_sentence_source(self._strip_tags(english_raw))
             if not japanese or not english:
                 continue
 

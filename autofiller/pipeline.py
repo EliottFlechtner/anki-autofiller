@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
@@ -24,7 +25,21 @@ def _to_hiragana(text: str) -> str:
     return "".join(chars)
 
 
-def format_sentences(sentences: list[ExampleSentence]) -> str:
+def _highlight_target_word(sentence: str, target_word: str) -> str:
+    """Highlight each exact target-word occurrence in a Japanese sentence."""
+    normalized_target = target_word.strip()
+    if not normalized_target:
+        return sentence
+
+    pattern = re.escape(normalized_target)
+    return re.sub(
+        pattern,
+        lambda match: (f'<b style="color:#dc2626;">{match.group(0)}</b>'),
+        sentence,
+    )
+
+
+def format_sentences(sentences: list[ExampleSentence], *, target_word: str = "") -> str:
     """Format sentence pairs into the HTML snippet expected by the meaning field.
 
     Args:
@@ -35,7 +50,10 @@ def format_sentences(sentences: list[ExampleSentence]) -> str:
     """
     if not sentences:
         return ""
-    parts = [f"例文: {s.japanese} - {s.english}" for s in sentences]
+    parts = [
+        f"例文: {_highlight_target_word(s.japanese, target_word)} - {s.english}"
+        for s in sentences
+    ]
     return "<br>".join(parts)
 
 
@@ -123,16 +141,17 @@ def _build_word_result(
         rendered_word = add_furigana(word, reading, fmt=furigana_format)
 
     if include_sentences and meaning and not separate_sentence_cards:
-        sentence_text = format_sentences(sentences)
+        sentence_text = format_sentences(sentences, target_word=word)
         if sentence_text:
             meaning = f"{meaning}<br><br>{sentence_text}"
 
     sentence_rows: list[SentenceCardRow] = []
     if separate_sentence_cards:
         for sentence in sentences:
+            highlighted_front = _highlight_target_word(sentence.japanese, word)
             sentence_rows.append(
                 SentenceCardRow(
-                    front=sentence.japanese,
+                    front=highlighted_front,
                     back=(
                         f"{sentence.english}<br><br>"
                         f"Word: {word}<br>Reading: {selected.reading}"

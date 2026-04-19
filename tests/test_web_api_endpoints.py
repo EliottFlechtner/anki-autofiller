@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from autofiller.models import CardRow, SearchCandidate
+from autofiller.models import CardRow, SearchCandidate, SentenceCardRow
 
 try:
     from autofiller import web_app as web_app_module
@@ -603,6 +603,379 @@ class WebApiEndpointTests(unittest.TestCase):
             with web_app_module.JOB_LOCK:
                 web_app_module.JOBS.pop(job_id, None)
 
+    def test_review_add_word_reuses_generation_settings_inline_sentence(self) -> None:
+        """Add-word should reuse include-sentences/furigana/pitch settings from original batch."""
+        app = web_app_module.app
+        job_id = "job-add-settings-inline"
+
+        with web_app_module.JOB_LOCK:
+            web_app_module.JOBS[job_id] = {
+                "status": "done",
+                "requires_confirmation": True,
+                "pending_add": {
+                    "rows": [],
+                    "sentence_rows": [],
+                    "review_items": [],
+                    "source_words": ["既存語"],
+                    "candidate_limit": 5,
+                    "sentence_count": 2,
+                    "include_sentences": True,
+                    "include_pitch_accent": True,
+                    "pitch_accent_theme": "light",
+                    "include_furigana": True,
+                    "furigana_format": "anki",
+                    "separate_sentence_cards": False,
+                },
+                "review_items": [],
+            }
+
+        try:
+            with (
+                app.test_client() as client,
+                patch(
+                    "autofiller.web_app.build_rows",
+                    return_value=(
+                        [
+                            CardRow(
+                                word="語[ご]",
+                                meaning="base meaning<br><br>例文: S - E",
+                                reading="<svg>ご</svg>",
+                            )
+                        ],
+                        [],
+                    ),
+                ) as build_rows_mock,
+                patch(
+                    "autofiller.web_app._build_review_items",
+                    return_value=[
+                        {
+                            "word": "語",
+                            "source_word": "語",
+                            "options": [
+                                {
+                                    "meaning": "selected meaning",
+                                    "reading": "ご",
+                                    "reading_preview": "<svg>ご</svg>",
+                                }
+                            ],
+                            "related_words": [],
+                            "selected_index": 0,
+                        }
+                    ],
+                ),
+            ):
+                response = client.post(
+                    f"/api/review-add-word/{job_id}",
+                    json={"word": "語"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            build_rows_mock.assert_called_once_with(
+                words=["語"],
+                pause_seconds=0,
+                candidate_limit=5,
+                sentence_count=2,
+                include_sentences=True,
+                separate_sentence_cards=False,
+                include_pitch_accent=True,
+                pitch_accent_theme="light",
+                include_furigana=True,
+                furigana_format="anki",
+                max_workers=1,
+                interactive_review=False,
+                progress_printer=None,
+            )
+
+            with web_app_module.JOB_LOCK:
+                updated_pending = web_app_module.JOBS[job_id]["pending_add"]
+
+            self.assertEqual(updated_pending["rows"][0]["word"], "語[ご]")
+            self.assertIn("selected meaning", updated_pending["rows"][0]["meaning"])
+            self.assertIn("<br><br>例文:", updated_pending["rows"][0]["meaning"])
+            self.assertEqual(updated_pending["rows"][0]["reading"], "<svg>ご</svg>")
+            self.assertIn("語", updated_pending["source_words"])
+        finally:
+            with web_app_module.JOB_LOCK:
+                web_app_module.JOBS.pop(job_id, None)
+
+    def test_review_add_word_appends_separate_sentence_rows(self) -> None:
+        """Add-word should append generated separate sentence rows for the new word."""
+        app = web_app_module.app
+        job_id = "job-add-settings-separate"
+
+        with web_app_module.JOB_LOCK:
+            web_app_module.JOBS[job_id] = {
+                "status": "done",
+                "requires_confirmation": True,
+                "pending_add": {
+                    "rows": [],
+                    "sentence_rows": [],
+                    "review_items": [],
+                    "source_words": [],
+                    "candidate_limit": 3,
+                    "sentence_count": 2,
+                    "include_sentences": True,
+                    "include_pitch_accent": False,
+                    "pitch_accent_theme": "dark",
+                    "include_furigana": False,
+                    "furigana_format": "ruby",
+                    "separate_sentence_cards": True,
+                },
+                "review_items": [],
+            }
+
+        try:
+            with (
+                app.test_client() as client,
+                patch(
+                    "autofiller.web_app.build_rows",
+                    return_value=(
+                        [CardRow(word="語", meaning="selected meaning", reading="ご")],
+                        [
+                            SentenceCardRow(
+                                front="文1",
+                                back="E1<br><br>Word: 語<br>Reading: ご",
+                            ),
+                            SentenceCardRow(
+                                front="文2",
+                                back="E2<br><br>Word: 語<br>Reading: ご",
+                            ),
+                        ],
+                    ),
+                ),
+                patch(
+                    "autofiller.web_app._build_review_items",
+                    return_value=[
+                        {
+                            "word": "語",
+                            "source_word": "語",
+                            "options": [
+                                {
+                                    "meaning": "selected meaning",
+                                    "reading": "ご",
+                                    "reading_preview": "ご",
+                                }
+                            ],
+                            "related_words": [],
+                            "selected_index": 0,
+                        }
+                    ],
+                ),
+            ):
+                response = client.post(
+                    f"/api/review-add-word/{job_id}",
+                    json={"word": "語"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            with web_app_module.JOB_LOCK:
+                updated_pending = web_app_module.JOBS[job_id]["pending_add"]
+
+            self.assertEqual(len(updated_pending["sentence_rows"]), 2)
+            self.assertEqual(updated_pending["sentence_rows"][0]["front"], "文1")
+            self.assertIn("Word: 語", updated_pending["sentence_rows"][0]["back"])
+            self.assertEqual(updated_pending["rows"][0]["word"], "語")
+        finally:
+            with web_app_module.JOB_LOCK:
+                web_app_module.JOBS.pop(job_id, None)
+
+    def test_review_add_word_option_parity_matrix(self) -> None:
+        """Added review words should always reuse the original generation option set."""
+        app = web_app_module.app
+
+        scenarios = [
+            {
+                "name": "inline-furigana-pitch-dark",
+                "include_sentences": True,
+                "separate_sentence_cards": False,
+                "include_pitch_accent": True,
+                "pitch_accent_theme": "dark",
+                "include_furigana": True,
+                "furigana_format": "anki",
+            },
+            {
+                "name": "separate-no-furigana-pitch-light",
+                "include_sentences": True,
+                "separate_sentence_cards": True,
+                "include_pitch_accent": True,
+                "pitch_accent_theme": "light",
+                "include_furigana": False,
+                "furigana_format": "ruby",
+            },
+            {
+                "name": "plain-no-sentences-no-pitch",
+                "include_sentences": False,
+                "separate_sentence_cards": False,
+                "include_pitch_accent": False,
+                "pitch_accent_theme": "dark",
+                "include_furigana": False,
+                "furigana_format": "ruby",
+            },
+        ]
+
+        for idx, scenario in enumerate(scenarios):
+            job_id = f"job-add-matrix-{idx}"
+            with self.subTest(scenario=scenario["name"]):
+                with web_app_module.JOB_LOCK:
+                    web_app_module.JOBS[job_id] = {
+                        "status": "done",
+                        "requires_confirmation": True,
+                        "pending_add": {
+                            "rows": [],
+                            "sentence_rows": [],
+                            "review_items": [],
+                            "source_words": ["初期語"],
+                            "candidate_limit": 4,
+                            "sentence_count": 2,
+                            "include_sentences": scenario["include_sentences"],
+                            "include_pitch_accent": scenario["include_pitch_accent"],
+                            "pitch_accent_theme": scenario["pitch_accent_theme"],
+                            "include_furigana": scenario["include_furigana"],
+                            "furigana_format": scenario["furigana_format"],
+                            "separate_sentence_cards": scenario[
+                                "separate_sentence_cards"
+                            ],
+                        },
+                        "review_items": [],
+                    }
+
+                build_rows_calls = []
+
+                def _fake_build_rows(*, words, **kwargs):
+                    build_rows_calls.append({"words": list(words), **kwargs})
+                    word = str(words[0])
+                    # Include inline sentence suffix to verify carry-over handling.
+                    generated_row = CardRow(
+                        word=f"{word}[よみ]" if scenario["include_furigana"] else word,
+                        meaning=(
+                            f"base-{word}<br><br>例文: {word} の例文"
+                            if scenario["include_sentences"]
+                            and not scenario["separate_sentence_cards"]
+                            else f"base-{word}"
+                        ),
+                        reading=(
+                            f"<svg data-theme=\"{scenario['pitch_accent_theme']}\" />"
+                            if scenario["include_pitch_accent"]
+                            else f"reading-{word}"
+                        ),
+                    )
+                    sentence_rows = (
+                        [
+                            SentenceCardRow(
+                                front=f"文-{word}",
+                                back=f"EN-{word}<br><br>Word: {word}<br>Reading: reading-{word}",
+                            )
+                        ]
+                        if scenario["separate_sentence_cards"]
+                        else []
+                    )
+                    return [generated_row], sentence_rows
+
+                def _fake_review_items(*, words, **_kwargs):
+                    word = str(words[0])
+                    return [
+                        {
+                            "word": word,
+                            "source_word": word,
+                            "options": [
+                                {
+                                    "meaning": f"selected-{word}",
+                                    "reading": f"sel-reading-{word}",
+                                    "reading_preview": (
+                                        f'<svg data-word="{word}" />'
+                                        if scenario["include_pitch_accent"]
+                                        else f"sel-reading-{word}"
+                                    ),
+                                }
+                            ],
+                            "related_words": [],
+                            "selected_index": 0,
+                        }
+                    ]
+
+                try:
+                    with (
+                        app.test_client() as client,
+                        patch(
+                            "autofiller.web_app.build_rows",
+                            side_effect=_fake_build_rows,
+                        ),
+                        patch(
+                            "autofiller.web_app._build_review_items",
+                            side_effect=_fake_review_items,
+                        ),
+                    ):
+                        resp_a = client.post(
+                            f"/api/review-add-word/{job_id}",
+                            json={"word": "追加語A"},
+                        )
+                        resp_b = client.post(
+                            f"/api/review-add-word/{job_id}",
+                            json={"word": "追加語B"},
+                        )
+
+                    self.assertEqual(resp_a.status_code, 200)
+                    self.assertEqual(resp_b.status_code, 200)
+                    self.assertEqual(len(build_rows_calls), 2)
+
+                    for call in build_rows_calls:
+                        self.assertEqual(call["pause_seconds"], 0)
+                        self.assertEqual(call["candidate_limit"], 4)
+                        self.assertEqual(call["sentence_count"], 2)
+                        self.assertEqual(
+                            call["include_sentences"], scenario["include_sentences"]
+                        )
+                        self.assertEqual(
+                            call["separate_sentence_cards"],
+                            scenario["separate_sentence_cards"],
+                        )
+                        self.assertEqual(
+                            call["include_pitch_accent"],
+                            scenario["include_pitch_accent"],
+                        )
+                        self.assertEqual(
+                            call["pitch_accent_theme"], scenario["pitch_accent_theme"]
+                        )
+                        self.assertEqual(
+                            call["include_furigana"], scenario["include_furigana"]
+                        )
+                        self.assertEqual(
+                            call["furigana_format"], scenario["furigana_format"]
+                        )
+                        self.assertEqual(call["interactive_review"], False)
+
+                    with web_app_module.JOB_LOCK:
+                        pending = web_app_module.JOBS[job_id]["pending_add"]
+
+                    # Two added rows should be appended regardless of scenario.
+                    self.assertEqual(len(pending["rows"]), 2)
+                    self.assertIn("追加語A", pending["source_words"])
+                    self.assertIn("追加語B", pending["source_words"])
+
+                    if scenario["separate_sentence_cards"]:
+                        self.assertEqual(len(pending["sentence_rows"]), 2)
+                        self.assertIn(
+                            "Word: 追加語A", pending["sentence_rows"][0]["back"]
+                        )
+                        self.assertIn(
+                            "Word: 追加語B", pending["sentence_rows"][1]["back"]
+                        )
+                    else:
+                        self.assertEqual(pending["sentence_rows"], [])
+
+                    if (
+                        scenario["include_sentences"]
+                        and not scenario["separate_sentence_cards"]
+                    ):
+                        self.assertIn("<br><br>例文:", pending["rows"][0]["meaning"])
+                        self.assertIn("<br><br>例文:", pending["rows"][1]["meaning"])
+                    else:
+                        self.assertNotIn("<br><br>例文:", pending["rows"][0]["meaning"])
+                        self.assertNotIn("<br><br>例文:", pending["rows"][1]["meaning"])
+                finally:
+                    with web_app_module.JOB_LOCK:
+                        web_app_module.JOBS.pop(job_id, None)
+
     def test_build_review_items_handles_blank_readings_with_pitch(self) -> None:
         """Review item builder should keep blank readings blank and still build pitch previews for non-blank readings."""
         generated_rows = [CardRow(word="語", meaning="chosen", reading="")]
@@ -917,6 +1290,84 @@ class WebApiEndpointTests(unittest.TestCase):
             self.assertEqual(len(captured_sentence_rows), 2)
             self.assertIn("Reading: B-r-1", captured_sentence_rows[0].back)
             self.assertIn("Reading: C-r-0", captured_sentence_rows[1].back)
+        finally:
+            with web_app_module.JOB_LOCK:
+                web_app_module.JOBS.pop(job_id, None)
+
+    def test_confirm_add_preserves_inline_sentences_when_not_separate(self) -> None:
+        """Confirm endpoint should keep inline sentence text when replacing reviewed meaning."""
+        app = web_app_module.app
+        job_id = "job-confirm-inline-sentence"
+
+        pending_add = {
+            "rows": [
+                {
+                    "word": "おはよう",
+                    "meaning": "good morning<br><br>例文: 子どもたちは学校に着くと、校門で出迎えた校長先生に「おはようございます」と元気よく挨拶した。 - When the children arrived.",
+                    "reading": "おはよう",
+                }
+            ],
+            "sentence_rows": [],
+            "review_items": [
+                {
+                    "word": "おはよう",
+                    "source_word": "おはよう",
+                    "options": [
+                        {
+                            "meaning": "good morning",
+                            "reading": "おはよう",
+                            "reading_preview": "おはよう",
+                        },
+                        {
+                            "meaning": "morning greeting",
+                            "reading": "おはよう",
+                            "reading_preview": "おはよう",
+                        },
+                    ],
+                    "related_words": [],
+                    "selected_index": 0,
+                }
+            ],
+            "separate_sentence_cards": False,
+            "anki_url": "http://127.0.0.1:8765",
+            "deck_name": "Example",
+            "model_name": "Jisho2Anki::Vocab",
+            "field_word": "Word",
+            "field_meaning": "Translation",
+            "field_reading": "Reading",
+            "tags": ["jp"],
+            "allow_duplicates": False,
+        }
+
+        with web_app_module.JOB_LOCK:
+            web_app_module.JOBS[job_id] = {
+                "status": "done",
+                "requires_confirmation": True,
+                "pending_add": pending_add,
+                "anki_summary": "",
+            }
+
+        captured_rows: list[CardRow] = []
+
+        def _capture_rows(rows, **_kwargs):
+            captured_rows.extend(rows)
+            return (len(rows), 0)
+
+        try:
+            with (
+                app.test_client() as client,
+                patch("autofiller.web_app.add_rows_to_anki", side_effect=_capture_rows),
+            ):
+                response = client.post(
+                    f"/api/confirm/{job_id}",
+                    json={"choices": [1]},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(len(captured_rows), 1)
+            self.assertIn("morning greeting", captured_rows[0].meaning)
+            self.assertIn("<br><br>例文:", captured_rows[0].meaning)
+            self.assertIn("When the children arrived.", captured_rows[0].meaning)
         finally:
             with web_app_module.JOB_LOCK:
                 web_app_module.JOBS.pop(job_id, None)
