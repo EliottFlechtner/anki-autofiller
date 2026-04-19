@@ -3,7 +3,8 @@ import {useEffect, useMemo, useState} from 'react';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 const SUPABASE_INBOX_TABLE = import.meta.env.VITE_SUPABASE_INBOX_TABLE || 'inbox_items';
-const CAPTURE_KEY = import.meta.env.VITE_CAPTURE_KEY || '';
+const CAPTURE_TOKEN_HEADER = 'X-J2A-Capture-Token';
+const CAPTURE_TOKEN_STORAGE_KEY = 'j2a.capture.token';
 
 const TEXT_FIELDS = [
   'words',
@@ -89,10 +90,6 @@ function toFormData(formState) {
 }
 
 export default function App() {
-  const captureParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-  const captureMode = captureParams?.get('capture') === '1';
-  const captureRequestKey = (captureParams?.get('k') || '').trim();
-  const captureAuthorized = !captureMode || !CAPTURE_KEY || captureRequestKey === CAPTURE_KEY;
   const [bootLoaded, setBootLoaded] = useState(false);
   const [formState, setFormState] = useState(() => buildInitialState({}));
   const [statusText, setStatusText] = useState('Bootstrapping settings...');
@@ -120,6 +117,12 @@ export default function App() {
   const [loadingInbox, setLoadingInbox] = useState(false);
   const [captureText, setCaptureText] = useState('');
   const [captureSource, setCaptureSource] = useState('phone');
+  const [captureToken, setCaptureToken] = useState(() => {
+    if (typeof window === 'undefined') {
+      return '';
+    }
+    return window.localStorage.getItem(CAPTURE_TOKEN_STORAGE_KEY) || '';
+  });
   const [captureStatus, setCaptureStatus] = useState('');
   const [captureSubmitting, setCaptureSubmitting] = useState(false);
 
@@ -155,10 +158,6 @@ export default function App() {
 
   async function submitCaptureToSupabase(event) {
     event.preventDefault();
-    if (!captureAuthorized) {
-      setCaptureStatus('Capture is locked. Add the correct key in URL (?capture=1&k=...).');
-      return;
-    }
 
     const lines = String(captureText || '')
       .split('\n')
@@ -172,6 +171,11 @@ export default function App() {
 
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
       setCaptureStatus('Supabase config missing. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then rebuild.');
+      return;
+    }
+
+    if (!String(captureToken || '').trim()) {
+      setCaptureStatus('Capture passphrase is required.');
       return;
     }
 
@@ -192,6 +196,7 @@ export default function App() {
         headers: {
           apikey: SUPABASE_ANON_KEY,
           Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          [CAPTURE_TOKEN_HEADER]: String(captureToken || '').trim(),
           'Content-Type': 'application/json',
           Prefer: 'return=minimal',
         },
@@ -211,6 +216,19 @@ export default function App() {
       setCaptureSubmitting(false);
     }
   }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const normalized = String(captureToken || '');
+    if (normalized) {
+      window.localStorage.setItem(CAPTURE_TOKEN_STORAGE_KEY, normalized);
+    } else {
+      window.localStorage.removeItem(CAPTURE_TOKEN_STORAGE_KEY);
+    }
+  }, [captureToken]);
 
   useEffect(() => {
     let isMounted = true;
@@ -789,6 +807,16 @@ export default function App() {
                 <input value={captureSource} onChange={(e) => setCaptureSource(e.target.value)} placeholder="phone" />
               </label>
 
+              <label>Capture passphrase
+                <input
+                  type="password"
+                  value={captureToken}
+                  onChange={(e) => setCaptureToken(e.target.value)}
+                  placeholder="shared secret"
+                  autoComplete="current-password"
+                />
+              </label>
+
               <button className="submit" type="submit" disabled={captureSubmitting}>
                 {captureSubmitting ? 'Saving...' : 'Save To Inbox'}
               </button>
@@ -796,7 +824,7 @@ export default function App() {
 
             <div className="capture-hints">
               <p className="hint">Setup needs Supabase URL + anon key in build env.</p>
-              <p className="hint">Optional lock: set <code>VITE_CAPTURE_KEY</code> and open with <code>?capture=1&amp;k=YOUR_KEY</code>.</p>
+              <p className="hint">Set a shared passphrase and enforce it with Supabase RLS on header <code>X-J2A-Capture-Token</code>.</p>
               <p className="hint">Use this page from GitHub Pages or any static host: add <code>?capture=1</code> to URL.</p>
               <p className="hint">Example capture URL: <code>https://YOUR_SITE/?capture=1</code></p>
             </div>
@@ -808,7 +836,7 @@ export default function App() {
                 <summary>Missing Supabase config</summary>
                 <div className="hint-box">
                   Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` before building the static capture site.
-                  Then enable RLS insert policy for pending inbox rows in Supabase.
+                  Then enable RLS policy in Supabase requiring request header `x-j2a-capture-token`.
                 </div>
               </details>
             ) : null}

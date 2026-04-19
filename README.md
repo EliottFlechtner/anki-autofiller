@@ -180,6 +180,14 @@ Recent versions also apply worker parallelism to review generation, not only ini
 
 The project includes an inbox flow for collecting words and importing pending items into the main generation/review pipeline.
 
+For public capture pages (for example GitHub Pages), use a shared passphrase and enforce it in Supabase RLS via header `x-j2a-capture-token`.
+
+Environment variables:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `ANKI_JISHO2ANKI_SUPABASE_CAPTURE_TOKEN` (for local app calls to Supabase; legacy alias: `ANKI_AUTOFILLER_SUPABASE_CAPTURE_TOKEN`)
+
 This README intentionally stays focused on core project usage. For environment-specific inbox hosting/configuration details, see the documentation links below.
 
 ## Project structure

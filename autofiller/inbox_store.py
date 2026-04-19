@@ -20,6 +20,11 @@ DEFAULT_SUPABASE_URL = os.environ.get("ANKI_JISHO2ANKI_SUPABASE_URL", "").strip(
 DEFAULT_SUPABASE_SERVICE_KEY = os.environ.get(
     "ANKI_JISHO2ANKI_SUPABASE_SERVICE_ROLE_KEY", ""
 ).strip()
+DEFAULT_SUPABASE_CAPTURE_TOKEN = os.environ.get(
+    "ANKI_JISHO2ANKI_SUPABASE_CAPTURE_TOKEN",
+    os.environ.get("ANKI_AUTOFILLER_SUPABASE_CAPTURE_TOKEN", ""),
+).strip()
+SUPABASE_CAPTURE_TOKEN_HEADER = "X-J2A-Capture-Token"
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
@@ -46,6 +51,8 @@ def _supabase_headers(*, prefer_return: bool = False) -> dict[str, str]:
     }
     if prefer_return:
         headers["Prefer"] = "return=representation"
+    if DEFAULT_SUPABASE_CAPTURE_TOKEN:
+        headers[SUPABASE_CAPTURE_TOKEN_HEADER] = DEFAULT_SUPABASE_CAPTURE_TOKEN
     return headers
 
 
