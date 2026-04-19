@@ -1116,7 +1116,11 @@ def api_review_add_word(job_id: str) -> Any:
             return jsonify({"error": f"{word} is already in batch"}), 409
 
         candidate_limit = int(pending_add.get("candidate_limit", 1))
-        sentence_count = int(pending_add.get("sentence_count", 1))
+        settings = load_settings()
+        sentence_count = int(
+            pending_add.get("sentence_count", settings["sentence_count"])
+        )
+        max_workers = int(pending_add.get("max_workers", settings["max_workers"]))
         include_sentences = bool(pending_add.get("include_sentences", False))
         include_pitch_accent = bool(pending_add.get("include_pitch_accent", False))
         pitch_accent_theme = str(pending_add.get("pitch_accent_theme", "dark"))
@@ -1137,7 +1141,7 @@ def api_review_add_word(job_id: str) -> Any:
             pitch_accent_theme=pitch_accent_theme,
             include_furigana=include_furigana,
             furigana_format=furigana_format,
-            max_workers=1,
+            max_workers=max(1, max_workers),
             interactive_review=False,
             progress_printer=None,
         )

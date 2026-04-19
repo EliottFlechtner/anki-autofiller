@@ -619,6 +619,7 @@ class WebApiEndpointTests(unittest.TestCase):
                     "source_words": ["既存語"],
                     "candidate_limit": 5,
                     "sentence_count": 2,
+                    "max_workers": 4,
                     "include_sentences": True,
                     "include_pitch_accent": True,
                     "pitch_accent_theme": "light",
@@ -681,7 +682,7 @@ class WebApiEndpointTests(unittest.TestCase):
                 pitch_accent_theme="light",
                 include_furigana=True,
                 furigana_format="anki",
-                max_workers=1,
+                max_workers=4,
                 interactive_review=False,
                 progress_printer=None,
             )
@@ -694,6 +695,77 @@ class WebApiEndpointTests(unittest.TestCase):
             self.assertIn("<br><br>例文:", updated_pending["rows"][0]["meaning"])
             self.assertEqual(updated_pending["rows"][0]["reading"], "<svg>ご</svg>")
             self.assertIn("語", updated_pending["source_words"])
+        finally:
+            with web_app_module.JOB_LOCK:
+                web_app_module.JOBS.pop(job_id, None)
+
+    def test_review_add_word_uses_default_sentence_count_when_missing(self) -> None:
+        """Add-word should fall back to the configured example-sentence count, not 1."""
+        app = web_app_module.app
+        job_id = "job-add-default-sentence-count"
+
+        with web_app_module.JOB_LOCK:
+            web_app_module.JOBS[job_id] = {
+                "status": "done",
+                "requires_confirmation": True,
+                "pending_add": {
+                    "rows": [],
+                    "sentence_rows": [],
+                    "review_items": [],
+                    "source_words": [],
+                    "candidate_limit": 3,
+                    "include_sentences": True,
+                    "include_pitch_accent": False,
+                    "pitch_accent_theme": "dark",
+                    "include_furigana": False,
+                    "furigana_format": "ruby",
+                    "separate_sentence_cards": False,
+                    "max_workers": 3,
+                },
+                "review_items": [],
+            }
+
+        try:
+            with (
+                app.test_client() as client,
+                patch(
+                    "autofiller.web_app.load_settings",
+                    return_value={
+                        "sentence_count": 2,
+                        "max_workers": 3,
+                    },
+                ),
+                patch(
+                    "autofiller.web_app.build_rows",
+                    return_value=([CardRow(word="語", meaning="m", reading="r")], []),
+                ) as build_rows_mock,
+                patch(
+                    "autofiller.web_app._build_review_items",
+                    return_value=[
+                        {
+                            "word": "語",
+                            "source_word": "語",
+                            "options": [
+                                {
+                                    "meaning": "m",
+                                    "reading": "r",
+                                    "reading_preview": "r",
+                                }
+                            ],
+                            "related_words": [],
+                            "selected_index": 0,
+                        }
+                    ],
+                ),
+            ):
+                response = client.post(
+                    f"/api/review-add-word/{job_id}",
+                    json={"word": "語"},
+                )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(build_rows_mock.call_args.kwargs["sentence_count"], 2)
+            self.assertEqual(build_rows_mock.call_args.kwargs["max_workers"], 3)
         finally:
             with web_app_module.JOB_LOCK:
                 web_app_module.JOBS.pop(job_id, None)
