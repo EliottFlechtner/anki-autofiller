@@ -28,10 +28,6 @@ def ensure_vocab_model(
     - word -> reading + translation
     - translation -> word + reading
     """
-    existing = invoke(url, "modelNames", {})
-    if isinstance(existing, list) and model_name in existing:
-        return
-
     word_ref = _field_ref(word_field)
     reading_ref = _field_ref(reading_field)
     meaning_ref = _field_ref(meaning_field)
@@ -86,6 +82,48 @@ def ensure_vocab_model(
             ),
         },
     ]
+
+    existing = invoke(url, "modelNames", {})
+    if isinstance(existing, list) and model_name in existing:
+        templates_result = invoke(url, "modelTemplates", {"modelName": model_name})
+        existing_templates = (
+            templates_result if isinstance(templates_result, dict) else {}
+        )
+
+        first_template_name = "Word -> Reading+Translation"
+        if first_template_name not in existing_templates and existing_templates:
+            first_template_name = list(existing_templates.keys())[0]
+
+        second_template_name = "Translation -> Word+Reading"
+        if second_template_name not in existing_templates:
+            legacy_second_name = "Word+Reading -> Translation"
+            if legacy_second_name in existing_templates:
+                second_template_name = legacy_second_name
+            elif len(existing_templates) >= 2:
+                second_template_name = list(existing_templates.keys())[1]
+
+        desired_templates = {
+            first_template_name: {
+                "Front": card_templates[0]["Front"],
+                "Back": card_templates[0]["Back"],
+            },
+            second_template_name: {
+                "Front": card_templates[1]["Front"],
+                "Back": card_templates[1]["Back"],
+            },
+        }
+
+        invoke(
+            url,
+            "updateModelTemplates",
+            {"model": {"name": model_name, "templates": desired_templates}},
+        )
+        invoke(
+            url,
+            "updateModelStyling",
+            {"model": {"name": model_name, "css": css}},
+        )
+        return
 
     invoke(
         url,

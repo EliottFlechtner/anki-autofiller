@@ -13,13 +13,28 @@ class AnkiConnectClientTests(unittest.TestCase):
     """Validate model bootstrap and add-notes behavior for vocabulary rows."""
 
     def test_add_rows_skips_model_creation_when_model_exists(self) -> None:
-        """Existing model should be reused without calling createModel."""
+        """Existing model should be reused and templates synced without createModel."""
         calls: list[tuple[str, dict]] = []
 
         def fake_invoke(url: str, action: str, params: dict) -> object:
             calls.append((action, params))
             if action == "modelNames":
                 return ["Jisho2Anki::Vocab"]
+            if action == "modelTemplates":
+                return {
+                    "Word -> Reading+Translation": {
+                        "Front": "legacy-front-1",
+                        "Back": "legacy-back-1",
+                    },
+                    "Word+Reading -> Translation": {
+                        "Front": "legacy-front-2",
+                        "Back": "legacy-back-2",
+                    },
+                }
+            if action == "updateModelTemplates":
+                return None
+            if action == "updateModelStyling":
+                return None
             if action == "createDeck":
                 return 1
             if action == "addNotes":
@@ -45,8 +60,30 @@ class AnkiConnectClientTests(unittest.TestCase):
         actions = [action for action, _params in calls]
         self.assertIn("modelNames", actions)
         self.assertNotIn("createModel", actions)
+        self.assertIn("modelTemplates", actions)
+        self.assertIn("updateModelTemplates", actions)
+        self.assertIn("updateModelStyling", actions)
         self.assertIn("createDeck", actions)
         self.assertIn("addNotes", actions)
+
+        update_templates_calls = [
+            params for action, params in calls if action == "updateModelTemplates"
+        ]
+        self.assertEqual(len(update_templates_calls), 1)
+        templates = update_templates_calls[0]["model"]["templates"]
+        self.assertIn("Word+Reading -> Translation", templates)
+        self.assertIn(
+            '<div class="meaning">{{Translation}}</div>',
+            templates["Word+Reading -> Translation"]["Front"],
+        )
+        self.assertIn(
+            '<div class="word">{{Word}}</div>',
+            templates["Word+Reading -> Translation"]["Back"],
+        )
+        self.assertIn(
+            '<div class="reading">{{Reading}}</div>',
+            templates["Word+Reading -> Translation"]["Back"],
+        )
 
     def test_add_rows_creates_vocab_model_when_missing(self) -> None:
         """Missing model should be created with expected field order and templates."""
