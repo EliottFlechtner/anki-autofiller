@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-04-19
+
+### Added
+- **Sentence target-word highlighting** in generated examples (bold red emphasis) for both inline and separate sentence card modes.
+- **Regression coverage for sentence cleaning and option parity**:
+  - New sentence extraction test coverage for source citation stripping.
+  - Expanded API and pipeline tests for added-word behavior and sentence rendering consistency.
+
+### Changed
+- **Added recommendation words now reuse active generation settings** from the review session (furigana, pitch accent, sentence mode/deck options).
+- **Review flow consistency improvements** so inline sentence handling matches final confirmed card output.
+
+### Fixed
+- Stripped trailing source citation text from Jisho example English sentences before card generation.
+- Corrected add/confirm mapping behavior so repeated added words no longer drift from selected meaning/reading context.
+
 ## [1.0.5] - 2026-04-19
 
 ### Added
