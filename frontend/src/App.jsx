@@ -90,6 +90,8 @@ function toFormData(formState) {
 }
 
 export default function App() {
+  const captureParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const captureMode = captureParams?.get('capture') === '1';
   const [bootLoaded, setBootLoaded] = useState(false);
   const [formState, setFormState] = useState(() => buildInitialState({}));
   const [statusText, setStatusText] = useState('Bootstrapping settings...');
@@ -770,24 +772,6 @@ export default function App() {
   const blocksSubmit = hasMappingValidationIssues || (!onlyAddValidRows && hasRowValidationIssues);
 
   if (captureMode) {
-    if (!captureAuthorized) {
-      return (
-        <div className="shell">
-          <main className="panel capture-panel">
-            <header className="hero">
-              <p className="eyebrow">Inbox Capture</p>
-              <h1>Capture is locked</h1>
-              <p className="sub">This page requires a valid capture key in the URL.</p>
-            </header>
-
-            <section className="card capture-card">
-              <p className="hint">Use <code>?capture=1&amp;k=YOUR_KEY</code>.</p>
-            </section>
-          </main>
-        </div>
-      );
-    }
-
     return (
       <div className="shell">
         <main className="panel capture-panel">
