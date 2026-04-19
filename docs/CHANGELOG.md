@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.5] - 2026-04-19
+
+### Added
+- **Web access hardening controls** for the Flask UI/API:
+  - Optional HTTP Basic Auth gate via runtime env.
+  - Optional IP allowlist enforcement (except `/healthz`).
+- **Supabase capture token support** across frontend and backend:
+  - Capture page passphrase field and persisted token UX.
+  - Header forwarding (`X-J2A-Capture-Token`) for Supabase inbox writes.
+  - Docker/env wiring for `ANKI_JISHO2ANKI_SUPABASE_CAPTURE_TOKEN`.
+- **Shared deck options preset flow** for Jisho2Anki decks with regression coverage.
+
+### Changed
+- **GitHub Pages behavior** now defaults to capture-only mode so the main settings page is not exposed on public Pages hosting.
+- Frontend structure was split into focused components for clarity:
+  - `CapturePanel`
+  - `StatusColumn`
+  - `SettingsColumn`
+- Backend web layer was split into helper modules to reduce `web_app.py` size and improve maintainability:
+  - `autofiller/web/form_utils.py`
+  - `autofiller/web/review_utils.py`
+
+### Fixed
+- Fixed vocab model template naming/sync behavior during model creation updates.
+- Fixed release-cycle regressions around capture/review paths while preserving existing API test patch points.
+
 ## [1.0.4] - 2026-04-18
 
 ### Added
