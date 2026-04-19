@@ -91,7 +91,8 @@ function toFormData(formState) {
 
 export default function App() {
   const captureParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-  const captureMode = captureParams?.get('capture') === '1';
+  const isGitHubPages = typeof window !== 'undefined' && window.location.hostname.includes('github.io');
+  const captureMode = isGitHubPages || captureParams?.get('capture') === '1';
   const [bootLoaded, setBootLoaded] = useState(false);
   const [formState, setFormState] = useState(() => buildInitialState({}));
   const [statusText, setStatusText] = useState('Bootstrapping settings...');
