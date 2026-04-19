@@ -1,4 +1,7 @@
 import {useEffect, useMemo, useState} from 'react';
+import CapturePanel from './components/CapturePanel';
+import SettingsColumn from './components/SettingsColumn';
+import StatusColumn from './components/StatusColumn';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
@@ -774,60 +777,18 @@ export default function App() {
 
   if (captureMode) {
     return (
-      <div className="shell">
-        <main className="panel capture-panel">
-          <header className="hero">
-            <p className="eyebrow">Inbox Capture</p>
-            <h1>Save vocab from phone</h1>
-            <p className="sub">Send words now. Sync on PC later. No same-network requirement.</p>
-          </header>
-
-          <section className="card capture-card">
-            <form className="stack" onSubmit={submitCaptureToSupabase}>
-              <label className="full">Words / expressions (one per line)
-                <textarea value={captureText} onChange={(e) => setCaptureText(e.target.value)} placeholder={"団地\n通快\n頑張る"} rows={8} />
-              </label>
-
-              <label>Source tag
-                <input value={captureSource} onChange={(e) => setCaptureSource(e.target.value)} placeholder="phone" />
-              </label>
-
-              <label>Capture passphrase
-                <input
-                  type="password"
-                  value={captureToken}
-                  onChange={(e) => setCaptureToken(e.target.value)}
-                  placeholder="shared secret"
-                  autoComplete="current-password"
-                />
-              </label>
-
-              <button className="submit" type="submit" disabled={captureSubmitting}>
-                {captureSubmitting ? 'Saving...' : 'Save To Inbox'}
-              </button>
-            </form>
-
-            <div className="capture-hints">
-              <p className="hint">Setup needs Supabase URL + anon key in build env.</p>
-              <p className="hint">Set a shared passphrase and enforce it with Supabase RLS on header <code>X-J2A-Capture-Token</code>.</p>
-              <p className="hint">Use this page from GitHub Pages or any static host: add <code>?capture=1</code> to URL.</p>
-              <p className="hint">Example capture URL: <code>https://YOUR_SITE/?capture=1</code></p>
-            </div>
-
-            {captureStatus ? <p className="result-line">{captureStatus}</p> : null}
-
-            {!SUPABASE_URL || !SUPABASE_ANON_KEY ? (
-              <details className="advanced-block" open>
-                <summary>Missing Supabase config</summary>
-                <div className="hint-box">
-                  Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` before building the static capture site.
-                  Then enable RLS policy in Supabase requiring request header `x-j2a-capture-token`.
-                </div>
-              </details>
-            ) : null}
-          </section>
-        </main>
-      </div>
+      <CapturePanel
+        captureText={captureText}
+        setCaptureText={setCaptureText}
+        captureSource={captureSource}
+        setCaptureSource={setCaptureSource}
+        captureToken={captureToken}
+        setCaptureToken={setCaptureToken}
+        captureSubmitting={captureSubmitting}
+        submitCaptureToSupabase={submitCaptureToSupabase}
+        captureStatus={captureStatus}
+        hasSupabaseConfig={Boolean(SUPABASE_URL && SUPABASE_ANON_KEY)}
+      />
     );
   }
 
@@ -844,456 +805,54 @@ export default function App() {
         </header>
 
         <div className="main-columns">
-          <section className="status-column">
-            <section className="status-block" aria-live="polite">
-              <div className="status-head">{statusText}</div>
-              <div className="progress-track"><div className="progress-fill" style={{width: `${progressPct}%`}} /></div>
-              {formState.anki_connect ? (
-                <label className="toggle" style={{marginTop: '0.45rem'}}>
-                  <input type="checkbox" checked={formState.review_before_anki} onChange={(e) => updateField('review_before_anki', e.target.checked)} />
-                  Review generated rows before sending to Anki
-                </label>
-              ) : null}
+          <StatusColumn
+            statusText={statusText}
+            progressPct={progressPct}
+            formState={formState}
+            updateField={updateField}
+            reviewSectionVisible={reviewSectionVisible}
+            reviewSectionReady={reviewSectionReady}
+            reviewIndex={reviewIndex}
+            reviewItems={reviewItems}
+            goToReviewIndex={goToReviewIndex}
+            currentReviewItem={currentReviewItem}
+            currentReviewChoice={currentReviewChoice}
+            setCurrentReviewChoice={setCurrentReviewChoice}
+            addedBatchWords={addedBatchWords}
+            addingBatchWords={addingBatchWords}
+            requestRelatedWordInBatch={requestRelatedWordInBatch}
+            onlyAddValidRows={onlyAddValidRows}
+            setOnlyAddValidRows={setOnlyAddValidRows}
+            hasMappingValidationIssues={hasMappingValidationIssues}
+            hasRowValidationIssues={hasRowValidationIssues}
+            reviewValidation={reviewValidation}
+            blocksSubmit={blocksSubmit}
+            confirmAddToAnki={confirmAddToAnki}
+            confirmingAdd={confirmingAdd}
+            confirmationJobId={confirmationJobId}
+            result={result}
+            previewRows={previewRows}
+            previewSentenceRows={previewSentenceRows}
+          />
 
-              {reviewSectionVisible ? (
-                <section className="review-panel review-panel-inline">
-                  <div className="review-panel-head">
-                    <div>
-                      <div className="review-kicker">Review before add</div>
-                      <h3>Choose the right definition for each word</h3>
-                      <p className="hint">Pick the candidate you want for this note, then confirm to send the reviewed rows to Anki.</p>
-                    </div>
-                    {reviewSectionReady ? (
-                      <div className="review-progress">
-                        {reviewIndex + 1} / {reviewItems.length}
-                      </div>
-                    ) : null}
-                  </div>
-
-                  {reviewSectionReady ? (
-                    <>
-                      <div className="review-nav">
-                        <button type="button" className="ghost" onClick={() => goToReviewIndex(reviewIndex - 1)} disabled={reviewIndex === 0}>
-                          Previous
-                        </button>
-                        <button type="button" className="ghost" onClick={() => goToReviewIndex(reviewIndex + 1)} disabled={reviewIndex >= reviewItems.length - 1}>
-                          Next
-                        </button>
-                      </div>
-
-                      {currentReviewItem() ? (
-                        <article className="review-card">
-                          <div className="review-card-top">
-                            <div>
-                              <div className="review-word-label">Word</div>
-                              <div className="review-word" dangerouslySetInnerHTML={{__html: currentReviewItem().word}} />
-                              <div className="review-source">Source: {currentReviewItem().source_word}</div>
-                            </div>
-                            <div className="review-choice-count">
-                              {currentReviewChoice() + 1} of {currentReviewItem().options.length}
-                            </div>
-                          </div>
-
-                          <div className="review-options">
-                            {currentReviewItem().options.map((option, optionIndex) => {
-                              const isSelected = optionIndex === currentReviewChoice();
-                              return (
-                                <button
-                                  key={`${reviewIndex}-${optionIndex}`}
-                                  type="button"
-                                  className={`review-option ${isSelected ? 'selected' : ''}`}
-                                  onClick={() => setCurrentReviewChoice(optionIndex)}
-                                >
-                                  <div className="review-option-head">
-                                    <span className="review-option-badge">{optionIndex + 1}</span>
-                                    <span className="review-option-meaning">{option.meaning || '(blank meaning)'}</span>
-                                  </div>
-                                  <div className="review-option-reading">{option.reading || '(no reading)'}</div>
-                                </button>
-                              );
-                            })}
-                          </div>
-
-                          <div className="review-details">
-                            <div><strong>Selected meaning:</strong> {currentReviewItem().options[currentReviewChoice()]?.meaning || '(blank meaning)'}</div>
-                            <div><strong>Selected reading:</strong> {currentReviewItem().options[currentReviewChoice()]?.reading || '(no reading)'}</div>
-                          </div>
-
-                          {(currentReviewItem().related_words || []).length > 0 ? (
-                            <div className="review-related-block">
-                              <div className="review-preview-label">Related words from Jisho</div>
-                              <div className="review-related-list">
-                                {(currentReviewItem().related_words || []).map((related, idx) => (
-                                  <div className="review-related-item" key={`${currentReviewItem().source_word}-${idx}-${related.word}`}>
-                                    <div className="review-related-main">
-                                      <div className="review-related-head"><strong>{related.word}</strong>{related.reading ? ` (${related.reading})` : ''}</div>
-                                      <div className="review-related-meaning">{related.meaning || '(no meaning)'}</div>
-                                    </div>
-                                      {(() => {
-                                        const isAdded = addedBatchWords.has(related.word);
-                                        const isAdding = addingBatchWords.has(related.word);
-                                        return (
-                                          <button
-                                            type="button"
-                                            className={`ghost ${isAdded ? 'disabled' : ''}`}
-                                            disabled={isAdded || isAdding}
-                                            onClick={() => requestRelatedWordInBatch(related.word)}
-                                            style={(isAdded || isAdding) ? {opacity: 0.5, cursor: 'not-allowed'} : {}}
-                                          >
-                                            {isAdded ? 'Added \u2713' : (isAdding ? 'Adding...' : 'Add To Batch')}
-                                          </button>
-                                        );
-                                      })()}
-                                  </div>
-                                ))}
-                              </div>
-                                <p className="hint">Click to fetch Jisho entry and add to your review queue.</p>
-                            </div>
-                          ) : null}
-                        </article>
-                      ) : null}
-
-                      <div className="review-nav review-nav-bottom">
-                        <button type="button" className="ghost" onClick={() => goToReviewIndex(reviewIndex - 1)} disabled={reviewIndex === 0}>
-                          Previous
-                        </button>
-                        <button type="button" className="ghost" onClick={() => goToReviewIndex(reviewIndex + 1)} disabled={reviewIndex >= reviewItems.length - 1}>
-                          Next
-                        </button>
-                        <div className="review-submit-options">
-                          <label className="toggle">
-                            <input
-                              type="checkbox"
-                              checked={onlyAddValidRows}
-                              onChange={(e) => setOnlyAddValidRows(e.target.checked)}
-                            />
-                            Only add valid rows (skip invalid)
-                          </label>
-                          {hasMappingValidationIssues || hasRowValidationIssues ? (
-                            <div className="review-validation">
-                              <strong>Validation warnings before submit:</strong>
-                              {hasMappingValidationIssues ? (
-                                <ul className="review-validation-list">
-                                  {reviewValidation.mappingIssues.map((issue, idx) => (
-                                    <li key={`mapping-${idx}`}>{issue}</li>
-                                  ))}
-                                </ul>
-                              ) : null}
-                              {hasRowValidationIssues ? (
-                                <ul className="review-validation-list">
-                                  {reviewValidation.rowIssues.map((issue) => (
-                                    <li key={`row-${issue.index}`}>
-                                      <button
-                                        type="button"
-                                        className="ghost"
-                                        onClick={() => goToReviewIndex(issue.index)}
-                                      >
-                                        Row {issue.index + 1} ({issue.word})
-                                      </button>
-                                      : {issue.reasons.join(', ')}
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : null}
-                              {blocksSubmit ? (
-                                <p className="hint">Fix highlighted issues or enable "Only add valid rows" to continue.</p>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
-                        <button className="submit" type="button" onClick={confirmAddToAnki} disabled={confirmingAdd || !confirmationJobId || blocksSubmit}>
-                          {confirmingAdd ? 'Confirming...' : 'Confirm and Add Reviewed Notes to Anki'}
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <p className="hint">Review mode is enabled, but the reviewed card data has not loaded yet.</p>
-                  )}
-                </section>
-              ) : null}
-
-              {result.message ? <p className="result-line">{result.message}</p> : null}
-              {result.summary ? <p className="result-line">{result.summary}</p> : null}
-
-              {previewRows.length > 0 && !confirmationJobId ? (
-                <details className="advanced-block" open={formState.review_before_anki}>
-                  <summary>Generated card preview ({previewRows.length} rows)</summary>
-                  <div className="log-box" style={{maxHeight: '420px', overflow: 'auto'}}>
-                    {previewRows.map((row, index) => (
-                      <div key={`${row.word}-${index}`} style={{marginBottom: '1rem', paddingBottom: '0.8rem', borderBottom: '1px solid #e2e8e2'}}>
-                        <strong>{index + 1}. <span dangerouslySetInnerHTML={{__html: row.word}} /></strong><br />
-                        <div style={{marginTop: '0.35rem'}}>
-                          <strong>Reading:</strong>
-                          {row.reading && row.reading.includes('<svg') ? (
-                            <div dangerouslySetInnerHTML={{__html: row.reading.replace(/color:#f5f5f5/g, 'color:#000000').replace(/fill:#f5f5f5/g, 'fill:#000000').replace(/stroke:#f5f5f5/g, 'stroke:#000000')}} />
-                          ) : (
-                            <span> {row.reading}</span>
-                          )}
-                        </div>
-                        <div style={{marginTop: '0.2rem'}}>
-                          <strong>Meaning:</strong> {row.meaning}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              ) : null}
-
-              {previewSentenceRows.length > 0 ? (
-                <details className="advanced-block">
-                  <summary>Generated sentence-card preview ({previewSentenceRows.length} shown)</summary>
-                  <div className="log-box" style={{maxHeight: '220px', overflow: 'auto'}}>
-                    {previewSentenceRows.map((row, index) => (
-                      <div key={`${row.front}-${index}`} style={{marginBottom: '0.7rem'}}>
-                        <strong>{index + 1}. {row.front}</strong><br />
-                        Back: {row.back}
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              ) : null}
-
-            </section>
-          </section>
-
-          <form onSubmit={startGeneration} className="stack settings-column">
-            <div className="settings-grid">
-              <div className="settings-subcolumn">
-                <section className="card input-output-card">
-                  <div className="card-title-row">
-                    <h2>Input & Output</h2>
-                    <button
-                      type="button"
-                      className={`inbox-bell ${inboxItems.length === 0 ? 'is-empty' : ''}`}
-                      aria-label={`Open inbox (${inboxItems.length} pending)`}
-                      onClick={handleInboxBellClick}
-                      disabled={loadingInbox}
-                    >
-                      <span className="inbox-bell-icon" aria-hidden="true">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-hidden="true" focusable="false">
-                          <rect width="256" height="256" fill="none"/>
-                          <path d="M221.8,175.94C216.25,166.38,208,139.33,208,104a80,80,0,1,0-160,0c0,35.34-8.26,62.38-13.81,71.94A16,16,0,0,0,48,200H88.81a40,40,0,0,0,78.38,0H208a16,16,0,0,0,13.8-24.06ZM128,216a24,24,0,0,1-22.62-16h45.24A24,24,0,0,1,128,216Z"/>
-                        </svg>
-                      </span>
-                      {inboxItems.length > 0 ? <span className="inbox-bell-count">{inboxItems.length}</span> : null}
-                    </button>
-                  </div>
-                  <div className="grid two">
-                    <label className="full">Words (one per line)
-                      <textarea
-                        className="words-textarea"
-                        value={formState.words}
-                        onChange={(e) => updateField('words', e.target.value)}
-                        placeholder={'食べる\n勉強\n試合'}
-                      />
-                    </label>
-
-                  </div>
-
-                  {showInboxOverlay && inboxItems.length > 0 ? (
-                    <div className="inbox-overlay" role="dialog" aria-label="Pending inbox items">
-                      <div className="inbox-head">
-                        <strong>Inbox</strong>
-                        <span className="hint">{inboxItems.length} pending</span>
-                      </div>
-                      <div className="inbox-actions">
-                        <button type="button" className="ghost" onClick={importPendingInboxToWords} disabled={inboxItems.length === 0}>
-                          Import
-                        </button>
-                      </div>
-                      <div className="inbox-list">
-                        {inboxItems.slice(0, 12).map((item) => (
-                          <div key={item.id} className="inbox-item">
-                            <span className="inbox-item-text">{item.text}</span>
-                            <button
-                              type="button"
-                              className="inbox-item-delete"
-                              aria-label="Delete inbox item"
-                              onClick={() => deleteInboxItem(item.id)}
-                              title="Delete item"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-hidden="true" focusable="false">
-                                <rect width="256" height="256" fill="none"/>
-                                <path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM112,168a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm0-120H96V40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8Z" fill="currentColor"/>
-                              </svg>
-                            </button>
-                          </div>
-                        ))}
-                        {inboxItems.length > 12 ? <p className="hint">Showing first 12 items.</p> : null}
-                      </div>
-                    </div>
-                  ) : null}
-                </section>
-
-                <section className="card">
-                  <h2>Content Options</h2>
-                  <div className="toggle-list">
-                    <label className="toggle">
-                      <input type="checkbox" checked={formState.include_sentences} onChange={(e) => updateField('include_sentences', e.target.checked)} />
-                      Include example sentences
-                    </label>
-                    <label className="toggle">
-                      <input type="checkbox" checked={formState.include_pitch_accent} onChange={(e) => updateField('include_pitch_accent', e.target.checked)} />
-                      Include pitch accent SVG
-                    </label>
-                    <label className="toggle">
-                      <input type="checkbox" checked={formState.include_furigana} onChange={(e) => updateField('include_furigana', e.target.checked)} />
-                      Add furigana to word field
-                    </label>
-                  </div>
-
-                  <div className="inline-options">
-                    {formState.include_pitch_accent ? (
-                      <div className="pitch-theme-row">
-                        <span className="pitch-theme-label">Pitch Accent SVG Color</span>
-                        <select
-                          className="pitch-theme-select"
-                          value={formState.pitch_accent_theme}
-                          onChange={(e) => updateField('pitch_accent_theme', e.target.value)}
-                        >
-                          <option value="dark">light</option>
-                          <option value="light">dark</option>
-                        </select>
-                      </div>
-                    ) : null}
-                    {formState.include_furigana ? (
-                      <label>Furigana format
-                        <select value={formState.furigana_format} onChange={(e) => updateField('furigana_format', e.target.value)}>
-                          <option value="ruby">ruby</option>
-                          <option value="anki">anki</option>
-                        </select>
-                      </label>
-                    ) : null}
-                  </div>
-                  {formState.include_pitch_accent ? (
-                    <p className="hint">Foreground only; background stays transparent.</p>
-                  ) : null}
-
-                  {formState.include_sentences ? (
-                    <div className="inline-options">
-                      <label>Sentence count per word
-                        <input type="number" min="0" step="1" value={formState.sentence_count} onChange={(e) => updateField('sentence_count', e.target.value)} />
-                      </label>
-                      <label className="toggle">
-                        <input type="checkbox" checked={formState.separate_sentence_cards} onChange={(e) => updateField('separate_sentence_cards', e.target.checked)} />
-                        Create separate sentence cards
-                      </label>
-                    </div>
-                  ) : null}
-                </section>
-              </div>
-
-              <div className="settings-subcolumn">
-                <section className="card">
-                  <h2>Destination</h2>
-                  <label className="toggle">
-                    <input type="checkbox" checked={formState.anki_connect} onChange={(e) => updateField('anki_connect', e.target.checked)} />
-                    Send notes directly to AnkiConnect
-                  </label>
-
-                  {formState.anki_connect ? (
-                    <>
-                      <label className="toggle">
-                        <input type="checkbox" checked={showAnkiUrl} onChange={(e) => setShowAnkiUrl(e.target.checked)} />
-                        Use custom AnkiConnect URL
-                      </label>
-
-                      <div className="grid two">
-                        {showAnkiUrl ? (
-                          <label>AnkiConnect URL
-                            <input value={formState.anki_url} onChange={(e) => updateField('anki_url', e.target.value)} />
-                          </label>
-                        ) : null}
-                        <label>Deck name (destination)
-                          <input
-                            value={formState.deck_name}
-                            onChange={(e) => updateField('deck_name', e.target.value)}
-                            list="deck-name-options"
-                          />
-                          <datalist id="deck-name-options">
-                            {[...new Set(ankiDecks)].filter(Boolean).map((deck) => (
-                              <option key={deck} value={deck} />
-                            ))}
-                          </datalist>
-                        </label>
-                        <label>Model name
-                          <select value={formState.model_name} onChange={(e) => updateField('model_name', e.target.value)}>
-                            {[...new Set([formState.model_name, ...ankiModels])].filter(Boolean).map((model) => (
-                              <option key={model} value={model}>{model}</option>
-                            ))}
-                          </select>
-                        </label>
-                        <label>Tags (comma-separated)
-                          <input value={formState.tags} onChange={(e) => updateField('tags', e.target.value)} />
-                        </label>
-                      </div>
-                      {loadingAnkiOptions ? <p className="hint">Loading model/deck options from Anki...</p> : null}
-                      <label className="toggle">
-                        <input type="checkbox" checked={formState.allow_duplicates} onChange={(e) => updateField('allow_duplicates', e.target.checked)} />
-                        Allow duplicates in Anki
-                      </label>
-
-                      <details className="advanced-block">
-                        <summary>Edit note field mapping</summary>
-                        <div className="grid two">
-                          <label>Word field
-                            <input value={formState.field_word} onChange={(e) => updateField('field_word', e.target.value)} />
-                          </label>
-                          <label>Meaning field
-                            <input value={formState.field_meaning} onChange={(e) => updateField('field_meaning', e.target.value)} />
-                          </label>
-                          <label>Reading field
-                            <input value={formState.field_reading} onChange={(e) => updateField('field_reading', e.target.value)} />
-                          </label>
-                        </div>
-                      </details>
-
-                      {showSentenceCardSettings ? (
-                        <details className="advanced-block" open>
-                          <summary>Sentence card note mapping</summary>
-                          <div className="grid two">
-                            <label>Sentence deck
-                              <input value={formState.sentence_deck_name} onChange={(e) => updateField('sentence_deck_name', e.target.value)} />
-                            </label>
-                            <label>Sentence model
-                              <input value={formState.sentence_model_name} onChange={(e) => updateField('sentence_model_name', e.target.value)} />
-                            </label>
-                            <label>Sentence front field
-                              <input value={formState.sentence_front_field} onChange={(e) => updateField('sentence_front_field', e.target.value)} />
-                            </label>
-                            <label>Sentence back field
-                              <input value={formState.sentence_back_field} onChange={(e) => updateField('sentence_back_field', e.target.value)} />
-                            </label>
-                          </div>
-                        </details>
-                      ) : null}
-                    </>
-                  ) : (
-                    <p className="hint">Cards will only be written to the TSV file.</p>
-                  )}
-                </section>
-
-                <section className="card advanced-block">
-                  <h2>Performance tuning</h2>
-                  <div className="grid three">
-                    <label>Pause seconds
-                      <input type="number" min="0" step="0.1" value={formState.pause_seconds} onChange={(e) => updateField('pause_seconds', e.target.value)} />
-                    </label>
-                    <label>Candidate limit
-                      <input type="number" min="1" step="1" value={formState.candidate_limit} onChange={(e) => updateField('candidate_limit', e.target.value)} />
-                    </label>
-                    <label>Max workers
-                      <input type="number" min="1" step="1" value={formState.max_workers} onChange={(e) => updateField('max_workers', e.target.value)} />
-                    </label>
-                  </div>
-                </section>
-
-                <button className="submit" type="submit" disabled={Boolean(jobId)}>
-                  {jobId ? 'Generating...' : 'Generate Cards'}
-                </button>
-              </div>
-            </div>
-          </form>
+          <SettingsColumn
+            startGeneration={startGeneration}
+            formState={formState}
+            updateField={updateField}
+            showInboxOverlay={showInboxOverlay}
+            inboxItems={inboxItems}
+            loadingInbox={loadingInbox}
+            handleInboxBellClick={handleInboxBellClick}
+            importPendingInboxToWords={importPendingInboxToWords}
+            deleteInboxItem={deleteInboxItem}
+            showSentenceCardSettings={showSentenceCardSettings}
+            showAnkiUrl={showAnkiUrl}
+            setShowAnkiUrl={setShowAnkiUrl}
+            ankiDecks={ankiDecks}
+            ankiModels={ankiModels}
+            loadingAnkiOptions={loadingAnkiOptions}
+            jobId={jobId}
+          />
         </div>
       </main>
     </div>

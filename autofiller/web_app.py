@@ -8,7 +8,6 @@ import threading
 import uuid
 import copy
 import hmac
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -21,9 +20,21 @@ from .config import (
 )
 from .io_utils import normalize_words, write_tsv
 from .jisho_client import JishoClient
-from .models import CardRow, SearchCandidate, SentenceCardRow
+from .models import CardRow, SentenceCardRow
 from .pipeline import build_rows
 from .pitch_accent import enrich_html_with_pitch
+from .web.form_utils import (
+    bool_from_form as _bool_from_form,
+    parse_inbox_item_ids as _parse_inbox_item_ids,
+    value_from_form as _value_from_form,
+)
+from .web.review_utils import (
+    build_review_items as _build_review_items_impl,
+    deserialize_card_rows as _deserialize_card_rows,
+    deserialize_sentence_rows as _deserialize_sentence_rows,
+    serialize_rows_preview as _serialize_rows_preview,
+    serialize_sentence_rows_preview as _serialize_sentence_rows_preview,
+)
 from .inbox_store import (
     add_inbox_items,
     delete_inbox_item,
@@ -139,23 +150,6 @@ def _protect_with_optional_basic_auth() -> Response | None:
     return _unauthorized_response()
 
 
-def _parse_inbox_item_ids(raw: str | None) -> list[int]:
-    if raw is None:
-        return []
-    ids: list[int] = []
-    for piece in str(raw).split(","):
-        token = piece.strip()
-        if not token:
-            continue
-        try:
-            value = int(token)
-        except ValueError:
-            continue
-        if value > 0:
-            ids.append(value)
-    return sorted(set(ids))
-
-
 def _static_stylesheet_filename() -> str:
     """Return the built frontend stylesheet path relative to Flask static root.
 
@@ -172,26 +166,6 @@ def _static_stylesheet_filename() -> str:
     return f"assets/{matches[-1].name}"
 
 
-def _bool_from_form(value: str | None, default: bool = False) -> bool:
-    """Parse checkbox/form values into a deterministic boolean.
-
-    Args:
-        value: Raw checkbox/form string value.
-        default: Fallback when value is missing or unrecognized.
-
-    Returns:
-        Parsed boolean value.
-    """
-    if value is None:
-        return default
-    normalized = value.strip().lower()
-    if normalized in {"1", "true", "yes", "on"}:
-        return True
-    if normalized in {"0", "false", "no", "off"}:
-        return False
-    return default
-
-
 def _job_update(job_id: str, **updates: Any) -> None:
     """Apply thread-safe updates to the in-memory job state map.
 
@@ -204,74 +178,6 @@ def _job_update(job_id: str, **updates: Any) -> None:
             JOBS[job_id].update(updates)
 
 
-def _serialize_rows_preview(rows: list[Any], limit: int = 60) -> list[dict[str, str]]:
-    """Serialize generated rows into a lightweight preview payload.
-
-    Args:
-        rows: Full generated row list.
-        limit: Maximum number of rows to include in preview.
-
-    Returns:
-        JSON-serializable preview row dictionaries.
-    """
-    return [
-        {"word": row.word, "meaning": row.meaning, "reading": row.reading}
-        for row in rows[:limit]
-    ]
-
-
-def _serialize_sentence_rows_preview(
-    rows: list[Any], limit: int = 60
-) -> list[dict[str, str]]:
-    """Serialize generated sentence rows into a lightweight preview payload.
-
-    Args:
-        rows: Full generated sentence-row list.
-        limit: Maximum number of rows to include in preview.
-
-    Returns:
-        JSON-serializable preview row dictionaries.
-    """
-    return [{"front": row.front, "back": row.back} for row in rows[:limit]]
-
-
-def _deserialize_card_rows(payload_rows: list[dict[str, str]]) -> list[CardRow]:
-    """Rebuild `CardRow` objects from serialized payload dictionaries."""
-    return [
-        CardRow(
-            word=str(item.get("word", "")),
-            meaning=str(item.get("meaning", "")),
-            reading=str(item.get("reading", "")),
-        )
-        for item in payload_rows
-    ]
-
-
-def _deserialize_sentence_rows(
-    payload_rows: list[dict[str, str]],
-) -> list[SentenceCardRow]:
-    """Rebuild `SentenceCardRow` objects from serialized payload dictionaries."""
-    return [
-        SentenceCardRow(
-            front=str(item.get("front", "")),
-            back=str(item.get("back", "")),
-        )
-        for item in payload_rows
-    ]
-
-
-def _to_hiragana(text: str) -> str:
-    """Convert Katakana in `text` to Hiragana, preserving other characters."""
-    chars: list[str] = []
-    for char in text:
-        code = ord(char)
-        if 0x30A1 <= code <= 0x30F6:
-            chars.append(chr(code - 0x60))
-        else:
-            chars.append(char)
-    return "".join(chars)
-
-
 def _build_review_items(
     *,
     words: list[str],
@@ -281,105 +187,24 @@ def _build_review_items(
     generated_rows: list[CardRow],
     max_workers: int = 1,
 ) -> list[dict[str, Any]]:
-    """Build per-word candidate options used by web review-before-add workflow."""
-    safe_workers = max(1, max_workers)
-
-    def _build_single_item(index: int, word: str) -> dict[str, Any]:
-        client = JishoClient()
-        candidates, related_candidates = client.search_review(
+    """Build review items while keeping test patch points on web_app symbols."""
+    return _build_review_items_impl(
+        words=words,
+        candidate_limit=candidate_limit,
+        include_pitch_accent=include_pitch_accent,
+        pitch_accent_theme=pitch_accent_theme,
+        generated_rows=generated_rows,
+        max_workers=max_workers,
+        search_review=lambda word, limit: JishoClient().search_review(
             word,
-            candidate_limit=max(candidate_limit, 1),
-        )
-        if not candidates:
-            candidates = [SearchCandidate(meaning="", reading="")]
-
-        options: list[dict[str, str]] = []
-        for candidate in candidates:
-            reading = _to_hiragana(candidate.reading)
-            reading_preview = reading
-            if include_pitch_accent:
-                pitch_html = enrich_html_with_pitch(
-                    word,
-                    reading,
-                    theme=pitch_accent_theme,
-                )
-                if pitch_html:
-                    reading_preview = pitch_html
-
-            options.append(
-                {
-                    "meaning": candidate.meaning,
-                    "reading": reading,
-                    "reading_preview": reading_preview,
-                }
-            )
-
-        selected_index = 0
-        if index < len(generated_rows):
-            generated_meaning = generated_rows[index].meaning
-            for opt_index, option in enumerate(options):
-                if option["meaning"] == generated_meaning:
-                    selected_index = opt_index
-                    break
-
-        return {
-            "word": generated_rows[index].word if index < len(generated_rows) else word,
-            "source_word": word,
-            "options": options,
-            "related_words": [
-                {
-                    "word": str(item.get("word", "")),
-                    "meaning": str(item.get("meaning", "")),
-                    "reading": _to_hiragana(str(item.get("reading", ""))),
-                    "reading_preview": (
-                        enrich_html_with_pitch(
-                            str(item.get("word", "")),
-                            _to_hiragana(str(item.get("reading", ""))),
-                            theme=pitch_accent_theme,
-                        )
-                        if include_pitch_accent
-                        else _to_hiragana(str(item.get("reading", "")))
-                    )
-                    or _to_hiragana(str(item.get("reading", ""))),
-                }
-                for item in related_candidates
-                if str(item.get("word", "")).strip()
-            ],
-            "selected_index": selected_index,
-        }
-
-    if safe_workers == 1 or len(words) <= 1:
-        return [_build_single_item(index, word) for index, word in enumerate(words)]
-
-    ordered_items: list[dict[str, Any] | None] = [None] * len(words)
-    with ThreadPoolExecutor(max_workers=min(safe_workers, len(words))) as executor:
-        futures = {
-            executor.submit(_build_single_item, index, word): index
-            for index, word in enumerate(words)
-        }
-        for future in as_completed(futures):
-            index = futures[future]
-            ordered_items[index] = future.result()
-
-    return [item for item in ordered_items if item is not None]
-
-
-def _value_from_form(form_data: Mapping[str, str], key: str, default: str) -> str:
-    """Read and trim a form value, falling back to `default` when blank.
-
-    Args:
-        form_data: Flat mapping of submitted form values.
-        key: Form key to read.
-        default: Fallback value for missing or blank input.
-
-    Returns:
-        Trimmed non-empty value or fallback default.
-    """
-    raw = form_data.get(key)
-    if raw is None:
-        return default
-    stripped = raw.strip()
-    return stripped if stripped else default
+            candidate_limit=limit,
+        ),
+        render_pitch=lambda word, reading, theme: enrich_html_with_pitch(
+            word,
+            reading,
+            theme=theme,
+        ),
+    )
 
 
 def _template_defaults(
