@@ -5,12 +5,16 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
+import autofiller.anki_connect_client as anki_client
 from autofiller.anki_connect_client import add_rows_to_anki
 from autofiller.models import CardRow
 
 
 class AnkiConnectClientTests(unittest.TestCase):
     """Validate model bootstrap and add-notes behavior for vocabulary rows."""
+
+    def setUp(self) -> None:
+        anki_client._VOCAB_DECK_CONFIG_ID = None
 
     def test_add_rows_skips_model_creation_when_model_exists(self) -> None:
         """Existing model should be reused and templates synced without createModel."""
@@ -31,12 +35,27 @@ class AnkiConnectClientTests(unittest.TestCase):
                         "Back": "legacy-back-2",
                     },
                 }
+            if action == "deckNames":
+                return ["Example"]
+            if action == "getDeckConfig":
+                return {
+                    "id": 1,
+                    "name": "Default",
+                    "new": {"perDay": 30},
+                    "rev": {"perDay": 500},
+                }
+            if action == "cloneDeckConfigId":
+                return 99
+            if action == "saveDeckConfig":
+                return True
             if action == "updateModelTemplates":
                 return None
             if action == "updateModelStyling":
                 return None
             if action == "createDeck":
                 return 1
+            if action == "setDeckConfigId":
+                return True
             if action == "addNotes":
                 return [123]
             raise AssertionError(f"Unexpected action: {action}")
@@ -61,6 +80,11 @@ class AnkiConnectClientTests(unittest.TestCase):
         self.assertIn("modelNames", actions)
         self.assertNotIn("createModel", actions)
         self.assertIn("modelTemplates", actions)
+        self.assertIn("deckNames", actions)
+        self.assertIn("getDeckConfig", actions)
+        self.assertIn("cloneDeckConfigId", actions)
+        self.assertIn("saveDeckConfig", actions)
+        self.assertIn("setDeckConfigId", actions)
         self.assertIn("updateModelTemplates", actions)
         self.assertIn("updateModelStyling", actions)
         self.assertIn("createDeck", actions)
@@ -85,6 +109,22 @@ class AnkiConnectClientTests(unittest.TestCase):
             templates["Word+Reading -> Translation"]["Back"],
         )
 
+        deck_config_calls = [
+            params for action, params in calls if action == "setDeckConfigId"
+        ]
+        self.assertEqual(len(deck_config_calls), 1)
+        self.assertEqual(deck_config_calls[0]["decks"], ["Example"])
+        self.assertEqual(deck_config_calls[0]["configId"], 99)
+
+        saved_config_calls = [
+            params for action, params in calls if action == "saveDeckConfig"
+        ]
+        self.assertEqual(len(saved_config_calls), 1)
+        saved_config = saved_config_calls[0]["config"]
+        self.assertEqual(saved_config["name"], "Jisho2Anki::Shared Deck Options")
+        self.assertEqual(saved_config["new"]["perDay"], 20)
+        self.assertEqual(saved_config["rev"]["perDay"], 200)
+
     def test_add_rows_creates_vocab_model_when_missing(self) -> None:
         """Missing model should be created with expected field order and templates."""
         calls: list[tuple[str, dict]] = []
@@ -93,10 +133,25 @@ class AnkiConnectClientTests(unittest.TestCase):
             calls.append((action, params))
             if action == "modelNames":
                 return []
+            if action == "deckNames":
+                return []
+            if action == "getDeckConfig":
+                return {
+                    "id": 1,
+                    "name": "Default",
+                    "new": {"perDay": 30},
+                    "rev": {"perDay": 500},
+                }
+            if action == "cloneDeckConfigId":
+                return 100
+            if action == "saveDeckConfig":
+                return True
             if action == "createModel":
                 return True
             if action == "createDeck":
                 return 1
+            if action == "setDeckConfigId":
+                return True
             if action == "addNotes":
                 return [456]
             raise AssertionError(f"Unexpected action: {action}")
@@ -140,6 +195,8 @@ class AnkiConnectClientTests(unittest.TestCase):
             '<div class="word">{{Word}}</div>',
             create_model_params["cardTemplates"][1]["Back"],
         )
+
+        self.assertIn("setDeckConfigId", [action for action, _params in calls])
         self.assertIn(
             '<div class="reading">{{Reading}}</div>',
             create_model_params["cardTemplates"][1]["Back"],

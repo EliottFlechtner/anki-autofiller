@@ -9,6 +9,12 @@ import urllib.request
 from .models import CardRow, SentenceCardRow
 
 
+VOCAB_DECK_CONFIG_NAME = "Jisho2Anki::Shared Deck Options"
+VOCAB_DECK_CONFIG_NEW_PER_DAY = 20
+VOCAB_DECK_CONFIG_REVIEW_PER_DAY = 200
+_VOCAB_DECK_CONFIG_ID: int | None = None
+
+
 def _field_ref(field_name: str) -> str:
     """Return an Anki template field reference like `{{Field}}`."""
     return "{{" + field_name + "}}"
@@ -136,6 +142,68 @@ def ensure_vocab_model(
             "cardTemplates": card_templates,
         },
     )
+
+
+def ensure_vocab_deck_config(url: str) -> int:
+    """Create or reuse the shared deck options group for Jisho2Anki decks."""
+    global _VOCAB_DECK_CONFIG_ID
+    if _VOCAB_DECK_CONFIG_ID is not None:
+        return _VOCAB_DECK_CONFIG_ID
+
+    config = None
+    deck_names = invoke(url, "deckNames", {})
+    if isinstance(deck_names, list):
+        for deck_name in deck_names:
+            deck_config = invoke(url, "getDeckConfig", {"deck": deck_name})
+            if (
+                isinstance(deck_config, dict)
+                and deck_config.get("name") == VOCAB_DECK_CONFIG_NAME
+            ):
+                config = deck_config
+                break
+
+    if config is None:
+        default_config = invoke(url, "getDeckConfig", {"deck": "Default"})
+        if not isinstance(default_config, dict):
+            raise RuntimeError("Could not load the default Anki deck options.")
+
+        clone_result = invoke(
+            url,
+            "cloneDeckConfigId",
+            {"name": VOCAB_DECK_CONFIG_NAME, "cloneFrom": default_config["id"]},
+        )
+        if not isinstance(clone_result, int):
+            raise RuntimeError("Could not create the shared Jisho2Anki deck options.")
+
+        config = default_config
+        config["id"] = clone_result
+        config["name"] = VOCAB_DECK_CONFIG_NAME
+
+    config["name"] = VOCAB_DECK_CONFIG_NAME
+    config["new"]["perDay"] = VOCAB_DECK_CONFIG_NEW_PER_DAY
+    config["rev"]["perDay"] = VOCAB_DECK_CONFIG_REVIEW_PER_DAY
+
+    saved = invoke(url, "saveDeckConfig", {"config": config})
+    if not saved:
+        raise RuntimeError("Could not save the shared Jisho2Anki deck options.")
+
+    _VOCAB_DECK_CONFIG_ID = int(config["id"])
+    return _VOCAB_DECK_CONFIG_ID
+
+
+def assign_vocab_deck_config(url: str, deck_names: list[str]) -> None:
+    """Assign the shared vocab deck options group to the given decks."""
+    if not deck_names:
+        return
+
+    config_id = ensure_vocab_deck_config(url)
+    result = invoke(
+        url,
+        "setDeckConfigId",
+        {"decks": deck_names, "configId": config_id},
+    )
+    if not result:
+        raise RuntimeError("Could not assign the shared Jisho2Anki deck options.")
 
 
 def invoke(url: str, action: str, params: dict) -> object:
@@ -311,6 +379,8 @@ def add_notes(*, notes: list[dict], url: str) -> tuple[int, int]:
     )
     for deck_name in deck_names:
         invoke(url, "createDeck", {"deck": deck_name})
+
+    assign_vocab_deck_config(url, deck_names)
 
     result = invoke(url, "addNotes", {"notes": notes})
     if not isinstance(result, list):
